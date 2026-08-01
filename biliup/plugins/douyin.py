@@ -6,7 +6,7 @@ import random
 
 from ..common.util import client
 from ..config import config
-from ..Danmaku import DanmakuClient
+from ..danmaku import DanmakuClient
 from ..common.abogus import ABogus
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase

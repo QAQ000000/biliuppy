@@ -22,7 +22,7 @@ navigator = {{
 }}
 """.strip()
     project_root = Path(__file__).resolve().parents[2]
-    sdk_path = project_root / "biliup" / "Danmaku" / "douyin_util" / "webmssdk.js"
+    sdk_path = project_root / "biliup" / "danmaku" / "douyin_util" / "webmssdk.js"
     context.eval(javascript_dom + load_webmssdk(sdk_path))
     return str(context.eval(f"get_sign('{x_ms_stub}')"))
 

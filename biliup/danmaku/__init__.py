@@ -16,12 +16,12 @@ from typing import Optional
 import aiohttp
 import lxml.etree as etree
 
-from biliup.Danmaku.bilibili import Bilibili
-from biliup.Danmaku.douyin import Douyin
-from biliup.Danmaku.douyu import Douyu
-from biliup.Danmaku.huya import Huya
-from biliup.Danmaku.twitcasting import Twitcasting
-from biliup.Danmaku.twitch import Twitch
+from .bilibili import Bilibili
+from .douyin import Douyin
+from .douyu import Douyu
+from .huya import Huya
+from .twitcasting import Twitcasting
+from .twitch import Twitch
 
 logger = logging.getLogger('biliup')
 

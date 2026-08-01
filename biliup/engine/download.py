@@ -22,7 +22,7 @@ from biliup.plugins import random_user_agent
 from PIL import Image
 
 from biliup.config import config
-from biliup.Danmaku import IDanmakuClient
+from biliup.danmaku import IDanmakuClient
 # from biliup.app import context
 logger = logging.getLogger('biliup')
 

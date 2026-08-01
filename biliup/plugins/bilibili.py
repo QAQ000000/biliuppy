@@ -6,7 +6,7 @@ import asyncio
 from biliup.common.util import client
 from biliup.config import config
 from . import match1, logger, wbi
-from biliup.Danmaku import DanmakuClient
+from biliup.danmaku import DanmakuClient
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
 

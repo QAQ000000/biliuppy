@@ -16,7 +16,7 @@ from typing import (
 
 from ..common.util import client
 from ..config import config
-from ..Danmaku import DanmakuClient
+from ..danmaku import DanmakuClient
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
 from . import logger, match1, json_loads

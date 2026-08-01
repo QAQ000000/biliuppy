@@ -9,7 +9,7 @@ from typing import Union, Any, Optional
 
 from ..common.util import client
 from ..config import config
-from ..Danmaku import DanmakuClient
+from ..danmaku import DanmakuClient
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
 from ..plugins import logger, match1, random_user_agent, json_loads, test_jsengine
