@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -55,14 +56,26 @@ def _session_secret(paths, configured: str | None) -> str:
     return value
 
 
-def _configure_logging(paths, level: str) -> None:
+def _configure_logging(paths, level: str) -> list[logging.Handler]:
     log_file = paths.logs / "biliup.log"
+    handlers: list[logging.Handler] = [
+        logging.StreamHandler(),
+        RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"),
+    ]
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler(log_file, encoding="utf-8")],
+        handlers=handlers,
         force=True,
     )
+    return handlers
+
+
+def _close_logging_handlers(handlers: list[logging.Handler]) -> None:
+    root = logging.getLogger()
+    for handler in handlers:
+        root.removeHandler(handler)
+        handler.close()
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -84,7 +97,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         jobs = BackgroundJobManager()
         app.state.context = AppContext(app_settings, paths, database, config, scheduler, jobs)
-        _configure_logging(paths, app_settings.log_level)
+        logging_handlers = _configure_logging(paths, app_settings.log_level)
         await scheduler.start()
         try:
             yield
@@ -92,6 +105,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             await jobs.shutdown()
             await scheduler.stop()
             database.dispose()
+            _close_logging_handlers(logging_handlers)
 
     app = FastAPI(title="biliup", version="1.1.7", lifespan=lifespan)
     app.add_middleware(AuthenticationMiddleware)
@@ -108,6 +122,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Total-Count"],
     )
     for router in (
         auth.router,

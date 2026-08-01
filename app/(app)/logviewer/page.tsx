@@ -12,7 +12,7 @@ import {
 // 日志内容组件
 interface LogContentProps {
   logs: string[];
-  logContainerRef: React.RefObject<HTMLDivElement>;
+  logContainerRef: React.RefObject<HTMLDivElement | null>;
   isLoading: boolean;
 }
 

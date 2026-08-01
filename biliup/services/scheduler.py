@@ -72,6 +72,7 @@ class WorkerState:
     paused: bool = False
     error: str | None = None
     task: asyncio.Task[None] | None = field(default=None, repr=False)
+    recording_task: asyncio.Task[None] | None = field(default=None, repr=False)
     recorder: FFmpegRecorder | None = field(default=None, repr=False)
 
 
@@ -81,12 +82,15 @@ class RecordingScheduler:
         self.paths = paths
         self.config = config
         self.workers: dict[int, WorkerState] = {}
-        self.hooks = HookRunner(paths)
+        self.hooks = HookRunner(paths, timeout=float(config.get("hook_timeout", 300) or 300))
         self.enabled = enabled
         self._closing = False
         self._plugins_loaded = False
         self.download_semaphore = asyncio.Semaphore(max(1, int(config.get("pool1_size", 5) or 5)))
         self.upload_semaphore = asyncio.Semaphore(max(1, int(config.get("pool2_size", 3) or 3)))
+        self.segment_semaphore = asyncio.Semaphore(
+            max(1, int(config.get("segment_processor_concurrency", 4) or 4))
+        )
 
     async def start(self) -> None:
         if not self.enabled:
@@ -103,6 +107,8 @@ class RecordingScheduler:
         for state in states:
             if state.recorder:
                 await state.recorder.stop()
+            if state.recording_task:
+                state.recording_task.cancel()
             if state.task:
                 state.task.cancel()
         await asyncio.gather(*(state.task for state in states if state.task), return_exceptions=True)
@@ -136,8 +142,13 @@ class RecordingScheduler:
             raise KeyError(streamer_id)
         state.paused = not state.paused
         state.status = "Paused" if state.paused else "Pending"
-        if state.paused and state.recorder:
-            await state.recorder.stop()
+        if state.paused:
+            if state.recorder:
+                await state.recorder.stop()
+            if state.recording_task and not state.recording_task.done():
+                state.recording_task.cancel()
+                await asyncio.gather(state.recording_task, return_exceptions=True)
+            state.status = "Paused"
         return state
 
     def snapshot(self) -> dict[int, WorkerState]:
@@ -168,7 +179,21 @@ class RecordingScheduler:
                     payload["excluded_keywords"],
                     payload["time_range"],
                 ):
-                    await self._record(state, payload, checker)
+                    recording_task = asyncio.create_task(
+                        self._record(state, payload, checker),
+                        name=f"recording-{state.streamer_id}",
+                    )
+                    state.recording_task = recording_task
+                    try:
+                        await recording_task
+                    except asyncio.CancelledError:
+                        if not state.paused:
+                            raise
+                    finally:
+                        if state.recording_task is recording_task:
+                            state.recording_task = None
+                    if state.paused:
+                        state.status = "Paused"
                 else:
                     state.status = "Idle"
                     state.error = None
@@ -205,10 +230,9 @@ class RecordingScheduler:
 
     async def _record(self, state: WorkerState, payload: dict[str, Any], checker: Any) -> None:
         state.status = "Waiting"
-        async with self.download_semaphore:
-            if state.paused or self._closing:
-                return
-            await self._record_active(state, payload, checker)
+        if state.paused or self._closing:
+            return
+        await self._record_active(state, payload, checker)
 
     async def _record_active(self, state: WorkerState, payload: dict[str, Any], checker: Any) -> None:
         now = datetime.now()
@@ -236,36 +260,22 @@ class RecordingScheduler:
             filename_prefix=payload["filename_prefix"] or self.config.get("filename_prefix"),
             extra_args=payload["opt_args"] or [],
         )
-        state.status = "Downloading"
-        state.error = None
-        state.recorder = FFmpegRecorder(spec)
-        stem = state.recorder.prepare_stem()
-        cover_path = await self._download_cover(checker, payload, stem)
-        context["live_cover_path"] = str(cover_path) if cover_path else ""
-        with self.database.session_factory.begin() as session:
-            info = StreamerInfo(
-                name=payload["remark"],
-                url=payload["url"],
-                title=title,
-                date=now,
-                live_cover_path=context["live_cover_path"],
-            )
-            session.add(info)
-            session.flush()
-            info_id = info.id
         files: list[Path] = []
-        segment_tasks: list[asyncio.Task[None]] = []
+        segment_tasks: set[asyncio.Task[None]] = set()
+        segment_error: BaseException | None = None
         threshold = int(override.get("filtering_threshold", self.config.get("filtering_threshold", 20)) or 0)
         parallel = bool(
             override.get("segment_processor_parallel", self.config.get("segment_processor_parallel", False))
         )
 
-        try:
-            checker.danmaku_init(str(self.paths.downloads / stem))
-            if checker.danmaku:
-                await asyncio.to_thread(checker.danmaku.start)
-        except Exception:
-            logger.exception("Danmaku initialization failed for %s", payload["remark"])
+        async def run_segment_hook(file: Path) -> None:
+            nonlocal segment_error
+            try:
+                await self.hooks.run_commands(payload["segment_processor"], {**context, "file": str(file)})
+            except Exception as exc:
+                segment_error = segment_error or exc
+            finally:
+                self.segment_semaphore.release()
 
         async def segment_ready(file: Path) -> None:
             if checker.danmaku:
@@ -276,22 +286,70 @@ class RecordingScheduler:
                 file.with_suffix(".xml").unlink(missing_ok=True)
                 return
             files.append(file)
-            operation = self.hooks.run_commands(payload["segment_processor"], {**context, "file": str(file)})
             if parallel:
-                segment_tasks.append(asyncio.create_task(operation, name=f"segment-hook-{info_id}"))
+                if segment_error:
+                    raise segment_error
+                await self.segment_semaphore.acquire()
+                task = asyncio.create_task(
+                    run_segment_hook(file),
+                    name=f"segment-hook-{state.streamer_id}",
+                )
+                segment_tasks.add(task)
+                task.add_done_callback(segment_tasks.discard)
             else:
-                await operation
+                await self.hooks.run_commands(payload["segment_processor"], {**context, "file": str(file)})
 
         try:
-            await state.recorder.run(segment_ready)
+            async with self.download_semaphore:
+                if state.paused or self._closing:
+                    return
+                state.status = "Downloading"
+                state.error = None
+                state.recorder = FFmpegRecorder(spec)
+                stem = state.recorder.prepare_stem()
+                cover_path = await self._download_cover(checker, payload, stem)
+                context["live_cover_path"] = str(cover_path) if cover_path else ""
+                try:
+                    checker.danmaku_init(str(self.paths.downloads / stem))
+                    if checker.danmaku:
+                        await asyncio.to_thread(checker.danmaku.start)
+                except Exception:
+                    logger.exception("Danmaku initialization failed for %s", payload["remark"])
+                try:
+                    await state.recorder.run(segment_ready)
+                finally:
+                    if checker.danmaku:
+                        await asyncio.to_thread(checker.danmaku.stop)
+        except BaseException:
+            for task in tuple(segment_tasks):
+                task.cancel()
+            await asyncio.gather(*segment_tasks, return_exceptions=True)
+            raise
         finally:
             state.recorder = None
-            if checker.danmaku:
-                await asyncio.to_thread(checker.danmaku.stop)
-            if segment_tasks:
-                await asyncio.gather(*segment_tasks)
+
+        while segment_tasks:
+            await asyncio.gather(*tuple(segment_tasks), return_exceptions=True)
+        if segment_error:
+            raise segment_error
+        if state.paused or self._closing:
+            state.status = "Paused" if state.paused else state.status
+            return
+        if not files:
+            state.status = "Idle"
+            return
+
         with self.database.session_factory.begin() as session:
-            session.add_all(FileItem(file=str(file), streamer_info_id=info_id) for file in files)
+            info = StreamerInfo(
+                name=payload["remark"],
+                url=payload["url"],
+                title=title,
+                date=now,
+                live_cover_path=context["live_cover_path"],
+            )
+            session.add(info)
+            session.flush()
+            session.add_all(FileItem(file=str(file), streamer_info_id=info.id) for file in files)
         context.update({"end_time": int(datetime.now().timestamp()), "file_list": [str(file) for file in files]})
         await self.hooks.run_commands(payload["downloaded_processor"], context)
         upload_succeeded: bool | None = None

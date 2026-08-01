@@ -1,13 +1,15 @@
 import json
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from biliup.api import create_app
+from biliup.api.routers.logs import TAIL_MAX_BYTES, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
-from biliup.database.models import Configuration
+from biliup.database.models import Configuration, FileItem, StreamerInfo
 
 
 def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
@@ -157,3 +159,75 @@ def test_authentication_contract(tmp_path: Path) -> None:
             "/v1/users/login", json={"username": "biliup", "password": "secret"}
         ).status_code == 200
         assert client.get("/v1/configuration").status_code == 200
+
+
+def test_streamer_history_is_paginated_and_includes_files(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        database = client.app.state.context.database
+        with database.session_factory.begin() as session:
+            for index in range(25):
+                info = StreamerInfo(
+                    name=f"streamer-{index}",
+                    url=f"https://example.invalid/{index}",
+                    title=f"title-{index}",
+                    date=datetime(2026, 1, 1) + timedelta(minutes=index),
+                    live_cover_path="",
+                )
+                info.files.append(FileItem(file=f"recording-{index}.mp4"))
+                session.add(info)
+
+        response = client.get("/v1/streamer-info", params={"page": 2, "page_size": 10})
+
+    assert response.status_code == 200
+    assert response.headers["X-Total-Count"] == "25"
+    assert isinstance(response.json(), list)
+    assert len(response.json()) == 10
+    assert response.json()[0]["name"] == "streamer-14"
+    assert response.json()[0]["files"][0]["file"] == "recording-14.mp4"
+    assert "T" in response.json()[0]["date"]
+
+
+def test_log_tail_reads_a_bounded_suffix(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "large.log"
+    expected = [f"line-{index}" for index in range(60)]
+    path.write_bytes(b"x" * (TAIL_MAX_BYTES * 2) + b"\n" + "\n".join(expected).encode())
+    real_open = Path.open
+    bytes_read = 0
+
+    class TrackingReader:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def read(self, size=-1):
+            nonlocal bytes_read
+            data = self.stream.read(size)
+            bytes_read += len(data)
+            return data
+
+    def tracking_open(self, *args, **kwargs):
+        stream = real_open(self, *args, **kwargs)
+        return TrackingReader(stream) if self == path and args and args[0] == "rb" else stream
+
+    monkeypatch.setattr(Path, "open", tracking_open)
+
+    assert tail_lines(path) == expected[-50:]
+    assert bytes_read <= TAIL_MAX_BYTES
+
+
+def test_logging_handler_is_closed_after_lifespan(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        assert client.get("/healthz").status_code == 200
+
+    log_path = tmp_path / "logs" / "biliup.log"
+    moved = log_path.with_suffix(".moved")
+    log_path.rename(moved)
+    assert moved.is_file()

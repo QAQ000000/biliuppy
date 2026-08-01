@@ -1,25 +1,38 @@
 'use client'
 
-import { AutoComplete, Layout, Nav, Spin, Table, Typography } from '@douyinfe/semi-ui'
+import { Layout, Nav, Spin, Table, Typography } from '@douyinfe/semi-ui'
 import { SortOrder } from '@douyinfe/semi-ui/lib/es/table'
 import useSWR from 'swr'
-import { fetcher, FileList } from '@/app/lib/api-streamer'
-import {
-  JSXElementConstructor,
-  Key,
-  ReactElement,
-  ReactNode,
-  ReactPortal,
-  useRef,
-  useState,
-} from 'react'
+import { paginatedFetcher } from '@/app/lib/api-streamer'
+import { useState } from 'react'
 import { IconHistory } from '@douyinfe/semi-icons'
 import { humDate } from '@/app/lib/utils'
 import Filter from "@/app/(app)/job/Filter";
 
+interface HistoryFile {
+  id: number
+  file: string
+  streamer_info_id: number
+}
+
+interface HistoryRecord {
+  id: number
+  name: string
+  title: string
+  url: string
+  date: string
+  live_cover_path: string
+  files: HistoryFile[]
+}
+
 export default function Home() {
-  const { Header, Footer, Sider, Content } = Layout
-  const { data: data, error, isLoading } = useSWR<any[]>('/v1/streamer-info', fetcher)
+  const { Header, Content } = Layout
+  const [page, setPage] = useState(1)
+  const pageSize = 20
+  const { data, error, isLoading } = useSWR(
+    `/v1/streamer-info?page=${page}&page_size=${pageSize}`,
+    paginatedFetcher<HistoryRecord>
+  )
   if (isLoading) {
     return <Spin size="large" />
   }
@@ -52,30 +65,18 @@ export default function Home() {
       title: '更新日期',
       dataIndex: 'date',
       defaultSortOrder: 'descend' as SortOrder,
-      sorter: (a: any, b: any) => (a.date - b.date > 0 ? 1 : -1),
-      render: (time: number) => humDate(time),
+      sorter: (a?: HistoryRecord, b?: HistoryRecord) =>
+        a && b ? Date.parse(a.date) - Date.parse(b.date) : 0,
+      render: (time: string) => humDate(time),
     },
   ]
-  const expandRowRender = (record: any, index: number | undefined) => {
+  const expandRowRender = (record?: HistoryRecord) => {
     return (
       <>
         文件列表：
-        {record.files.map(
-          (it: {
-            id: Key | null | undefined
-            file:
-              | string
-              | number
-              | boolean
-              | ReactElement<any, string | JSXElementConstructor<any>>
-              | Iterable<ReactNode>
-              | ReactPortal
-              | null
-              | undefined
-          }) => {
-            return <div key={it.id}>&nbsp;&nbsp;文件名：{it.file}</div>
-          }
-        )}
+        {(record?.files ?? []).map((it) => (
+          <div key={it.id}>&nbsp;&nbsp;文件名：{it.file}</div>
+        ))}
       </>
     )
   }
@@ -115,8 +116,14 @@ export default function Home() {
             size="small"
             rowKey="id"
             columns={columns}
-            dataSource={data}
+            dataSource={data?.items ?? []}
             expandedRowRender={expandRowRender}
+            pagination={{
+              currentPage: page,
+              pageSize,
+              total: data?.total ?? 0,
+              onPageChange: setPage,
+            }}
           />
         </main>
       </Content>

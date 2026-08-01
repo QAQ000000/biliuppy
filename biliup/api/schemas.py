@@ -81,4 +81,5 @@ def streamer_info_dict(instance: Any) -> dict[str, Any]:
     value = orm_dict(instance)
     if isinstance(value.get("date"), datetime):
         value["date"] = value["date"].isoformat()
+    value["files"] = [orm_dict(file) for file in instance.files]
     return value

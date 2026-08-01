@@ -22,17 +22,30 @@ class BackgroundJob:
 
 
 class BackgroundJobManager:
-    def __init__(self) -> None:
+    TERMINAL_STATUSES = {"Completed", "Error", "Cancelled"}
+
+    def __init__(self, *, max_completed: int = 100) -> None:
         self.jobs: dict[str, BackgroundJob] = {}
         self.tasks: dict[str, asyncio.Task[None]] = {}
+        self.max_completed = max(0, max_completed)
 
     def submit(self, kind: str, operation: Coroutine[Any, Any, None]) -> BackgroundJob:
         job = BackgroundJob(id=uuid4().hex, kind=kind)
         self.jobs[job.id] = job
         task = asyncio.create_task(self._run(job, operation), name=f"{kind}-{job.id}")
         self.tasks[job.id] = task
-        task.add_done_callback(lambda _task, job_id=job.id: self.tasks.pop(job_id, None))
+        task.add_done_callback(lambda _task, job_id=job.id: self._task_done(job_id))
         return job
+
+    def _task_done(self, job_id: str) -> None:
+        self.tasks.pop(job_id, None)
+        terminal_ids = [
+            current_id
+            for current_id, current_job in self.jobs.items()
+            if current_job.status in self.TERMINAL_STATUSES
+        ]
+        for current_id in terminal_ids[:-self.max_completed] if self.max_completed else terminal_ids:
+            self.jobs.pop(current_id, None)
 
     async def _run(self, job: BackgroundJob, operation: Coroutine[Any, Any, None]) -> None:
         job.status = "Running"

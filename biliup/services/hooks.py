@@ -8,15 +8,36 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import psutil
 
 from biliup.core import AppPaths
 
 logger = logging.getLogger("biliup.hooks")
 
 
+def _terminate_process_tree(pid: int) -> None:
+    try:
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
+    processes = parent.children(recursive=True) + [parent]
+    for process in processes:
+        try:
+            process.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _gone, alive = psutil.wait_procs(processes, timeout=5)
+    for process in alive:
+        try:
+            process.kill()
+        except psutil.NoSuchProcess:
+            pass
+
+
 class HookRunner:
-    def __init__(self, paths: AppPaths):
+    def __init__(self, paths: AppPaths, *, timeout: float = 300):
         self.paths = paths
+        self.timeout = max(0.1, timeout)
 
     @staticmethod
     def _normalize(step: Any) -> tuple[str | None, Any]:
@@ -42,7 +63,15 @@ class HookRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
-            output, _ = await process.communicate(json.dumps(payload, ensure_ascii=False).encode())
+            try:
+                output, _ = await asyncio.wait_for(
+                    process.communicate(json.dumps(payload, ensure_ascii=False).encode()),
+                    timeout=self.timeout,
+                )
+            except TimeoutError:
+                await asyncio.to_thread(_terminate_process_tree, process.pid)
+                await process.wait()
+                raise TimeoutError(f"Hook timed out after {self.timeout:g} seconds: {value}") from None
             if process.returncode:
                 raise RuntimeError(f"Hook failed ({process.returncode}): {output.decode(errors='replace')}")
 

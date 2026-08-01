@@ -1,4 +1,4 @@
-import time
+import asyncio
 import random
 
 import biliup.common.util
@@ -27,18 +27,20 @@ class Kuaishou(DownloadBase):
 
         plugin_msg = f"Kuaishou - {room_id}"
 
-        # with requests.Session() as s:
-        biliup.common.util.client.headers = self.fake_headers.copy()
         # 首页低风控生成did
-        await biliup.common.util.client.get("https://live.kuaishou.com", timeout=5)
+        await biliup.common.util.client.get(
+            "https://live.kuaishou.com", headers=self.fake_headers, timeout=5
+        )
 
         # 不暂停似乎容易风控
         times = 3 + random.random()
         logger.debug(f"{plugin_msg}: 暂停 {times} 秒")
-        time.sleep(times)
+        await asyncio.sleep(times)
 
         err_keys = ["错误代码22", "主播尚未开播"]
-        html = (await biliup.common.util.client.get(f"https://live.kuaishou.com/u/{room_id}", timeout=5)).text
+        html = (await biliup.common.util.client.get(
+            f"https://live.kuaishou.com/u/{room_id}", headers=self.fake_headers, timeout=5
+        )).text
         for key in err_keys:
             if key in html:
                 logger.debug(f"{plugin_msg}: {key}")
@@ -46,7 +48,9 @@ class Kuaishou(DownloadBase):
 
         room_info = (await biliup.common.util.client.get(
             f"https://live.kuaishou.com/live_api/liveroom/livedetail?principalId={room_id}",
-            timeout=5)).json()['data']
+            headers=self.fake_headers,
+            timeout=5,
+        )).json()['data']
 
         if room_info['result'] == 22:
             logger.error(f"{plugin_msg}: 直播间地址错误")

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 from biliup import __version__
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo
@@ -27,8 +27,22 @@ def list_videos(context: AppContext = Depends(get_context)) -> list[dict]:
 
 
 @router.get("/v1/streamer-info")
-def list_streamer_info(session: Session = Depends(get_session)) -> list[dict]:
-    return [streamer_info_dict(row) for row in session.scalars(select(StreamerInfo).order_by(StreamerInfo.id.desc()))]
+def list_streamer_info(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    total = session.scalar(select(func.count(StreamerInfo.id))) or 0
+    rows = session.scalars(
+        select(StreamerInfo)
+        .options(selectinload(StreamerInfo.files))
+        .order_by(StreamerInfo.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    response.headers["X-Total-Count"] = str(total)
+    return [streamer_info_dict(row) for row in rows]
 
 
 @router.get("/v1/streamer-info/files/{info_id}")

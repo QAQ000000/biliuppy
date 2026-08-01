@@ -29,7 +29,7 @@ import { FormApi } from '@douyinfe/semi-ui/lib/es/form'
 import useSWRMutation from 'swr/mutation'
 import { useBiliUsers } from '../lib/use-streamers'
 import QRcode from '@/app/ui/QRcode'
-import { useWindowSize } from 'react-use';
+import { useWindowSize } from '@/app/lib/utils'
 
 type UserListProps = {
   onCancel?: (e: React.MouseEvent<Element, MouseEvent> | React.KeyboardEvent<Element>) => void
@@ -109,7 +109,7 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
       })
     }
   }
-  const api = useRef<FormApi>()
+  const api = useRef<FormApi>(undefined)
   const [value, setValue] = useState()
   const [panel, setPanel] = useState(<></>)
   const onChange = (e: any) => {
@@ -135,7 +135,7 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
     <SideSheet
       title={<Typography.Title heading={4}>用户管理</Typography.Title>}
       visible={visible}
-      width={Math.min(448, width ?? Number.MIN_VALUE)}
+      width={Math.min(448, width ?? 448)}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 from biliup.core import AppPaths
 from biliup.engine.upload import UploadBase
 from biliup.integrations.uploaders.bili_web import BiliWeb
+
+logger = logging.getLogger("biliup.uploader")
 
 
 def _resolve_files(files: list[str], paths: AppPaths) -> list[Path]:
@@ -21,8 +24,11 @@ def _resolve_files(files: list[str], paths: AppPaths) -> list[Path]:
 
 
 def _upload_sync(files: list[Path], params: dict[str, Any], paths: AppPaths) -> None:
-    if (params.get("uploader") or "bili_web") == "Noop":
+    uploader_name = params.get("uploader") or "bili_web"
+    if uploader_name == "Noop":
         return
+    if uploader_name not in {"bili_web", "bili_web_sync", "bilibili"}:
+        raise ValueError(f"Unknown uploader: {uploader_name}")
     cookie_value = params.get("user_cookie") or "cookies.json"
     cookie_path = paths.resolve_user_path(cookie_value)
     cover_path = params.get("cover_path")
@@ -33,7 +39,7 @@ def _upload_sync(files: list[Path], params: dict[str, Any], paths: AppPaths) -> 
         "format_title": params.get("title") or files[0].stem,
         "url": params.get("source_url") or params.get("copyright_source") or "",
     }
-    uploader = BiliWeb(
+    common_options = dict(
         principal=data["name"],
         data=data,
         user=params.get("user") or {},
@@ -61,6 +67,16 @@ def _upload_sync(files: list[Path], params: dict[str, Any], paths: AppPaths) -> 
         extra_fields=params.get("extra_fields") or "",
     )
     file_list = [UploadBase.FileInfo(str(path), None) for path in files]
+    if uploader_name == "bilibili":
+        from biliup.integrations.uploaders.bili_chrome import BiliChrome
+
+        uploader = BiliChrome(principal=data["name"], data=data)
+    else:
+        if uploader_name == "bili_web_sync":
+            logger.warning(
+                "Uploader bili_web_sync uses the file-based bili_web adapter; live streaming upload is not available"
+            )
+        uploader = BiliWeb(**common_options)
     uploader.upload(file_list)
 
 

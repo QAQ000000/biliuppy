@@ -61,6 +61,7 @@ biliup = [
     "database/migrations/*.py",
     "database/migrations/*.mako",
     "database/migrations/versions/*.py",
+    "danmaku/douyin_util/webmssdk.js",
 ]
 
 [tool.setuptools.exclude-package-data]

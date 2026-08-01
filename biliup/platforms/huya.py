@@ -32,6 +32,7 @@ HUYA_MOBILE_BASE_URL = "https://m.huya.com"
 HUYA_MP_BASE_URL = "https://mp.huya.com"
 HUYA_WUP_BASE_URL = "https://wup.huya.com"
 HUYA_WEB_ROOM_DATA_REGEX = r"var TT_ROOM_DATA = (.*?);"
+HUYA_WEB_HEADERS = {"user-agent": "Mozilla/5.0"}
 
 @Plugin.download(regexp=r'https?://(?:(?:www|m)\.)?huya\.com')
 class Huya(DownloadBase):
@@ -52,7 +53,6 @@ class Huya(DownloadBase):
 
         try:
             if not self.__room_id.isdigit():
-                client.headers.update(self.fake_headers)
                 self.__room_id = await _get_real_rid(self.url)
                 logger.debug(f"{self.plugin_msg}: {_get_real_rid.cache_info()}")
             self.fake_headers['referer'] = self.url
@@ -574,7 +574,7 @@ def _raise_for_room_block(text: str):
 
 @alru_cache(maxsize=None)
 async def _get_real_rid(url) -> str:
-    resp = await client.get(url)
+    resp = await client.get(url, headers=HUYA_WEB_HEADERS)
     resp.raise_for_status()
     _raise_for_room_block(resp.text)
     room_data = match1(resp.text, HUYA_WEB_ROOM_DATA_REGEX)

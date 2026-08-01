@@ -55,6 +55,8 @@ class RecordingConfig(BaseModel):
     filtering_threshold: int = 20
     filename_prefix: str = "{streamer}%Y-%m-%d %H_%M_%S{title}"
     segment_processor_parallel: bool = False
+    segment_processor_concurrency: int = 4
+    hook_timeout: int = 300
     uploader: str = "Noop"
     submit_api: str = "web"
     lines: str = "AUTO"

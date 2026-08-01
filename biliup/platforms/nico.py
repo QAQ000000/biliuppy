@@ -1,7 +1,6 @@
+import asyncio
 import random
 import re
-import subprocess
-import time
 
 import biliup.common.util
 from biliup.config import config
@@ -14,6 +13,7 @@ from . import logger
 class Nico(DownloadBase):
     def __init__(self, fname, url, suffix='flv'):
         super().__init__(fname, url, suffix)
+        self.proc = None
 
     async def acheck_stream(self, is_check=False):
         try:
@@ -33,24 +33,23 @@ class Nico(DownloadBase):
             self.url, "best"  # 流链接
         ]
         if config.get('user', {}).get('niconico-email') is not None:
-            niconico_email = "--niconico-email " + config.get('user', {}).get('niconico-email')
-            stream_shell.insert(1, niconico_email)
+            stream_shell[1:1] = ["--niconico-email", config.get('user', {}).get('niconico-email')]
         if config.get('user', {}).get('niconico-password') is not None:
-            niconico_password = "--niconico-password " + config.get('user', {}).get('niconico-password')
-            stream_shell.insert(1, niconico_password)
+            stream_shell[1:1] = ["--niconico-password", config.get('user', {}).get('niconico-password')]
         if config.get('user', {}).get('niconico-user-session') is not None:
-            niconico_user_session = "--niconico-user-session " + config.get('user', {}).get('niconico-user-session')
-            stream_shell.insert(1, niconico_user_session)
+            stream_shell[1:1] = ["--niconico-user-session", config.get('user', {}).get('niconico-user-session')]
         if config.get('user', {}).get('niconico-purge-credentials') is not None:
-            niconico_purge_credentials = "--niconico-purge-credentials " + config.get('user', {}).get('niconico-purge-credentials')
-            stream_shell.insert(1, niconico_purge_credentials)
-        self.proc = subprocess.Popen(stream_shell)
+            stream_shell[1:1] = [
+                "--niconico-purge-credentials",
+                config.get('user', {}).get('niconico-purge-credentials'),
+            ]
+        self.proc = await asyncio.create_subprocess_exec(*stream_shell)
         self.raw_stream_url = f"http://localhost:{port}"
         i = 0
         while i < 5:
-            if not (self.proc.poll() is None):
-                return
-            time.sleep(1)
+            if self.proc.returncode is not None:
+                return False
+            await asyncio.sleep(1)
             i += 1
         return True
 

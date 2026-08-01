@@ -1,9 +1,8 @@
+import asyncio
 import io
 import random
 import re
 import socket
-import subprocess
-import time
 from typing import AsyncGenerator, List
 from urllib.parse import urlencode
 
@@ -40,12 +39,12 @@ class TwitchVideos(DownloadBase):
 
             with yt_dlp.YoutubeDL({'download_archive': 'archive.txt', 'cookiefile': cookie}) as ydl:
                 try:
-                    info = ydl.extract_info(self.url, download=False, process=False)
+                    info = await asyncio.to_thread(ydl.extract_info, self.url, download=False, process=False)
                     for entry in info['entries']:
                         if ydl.in_download_archive(entry):
                             continue
                         if not is_check:
-                            download_info = ydl.extract_info(entry['url'], download=False)
+                            download_info = await asyncio.to_thread(ydl.extract_info, entry['url'], download=False)
                             self.room_title = download_info['title']
                             self.raw_stream_url = download_info['url']
                             thumbnails = download_info.get('thumbnails')
@@ -134,13 +133,13 @@ class Twitch(DownloadBase, BatchCheck):
             if auth_token:
                 stream_shell.insert(1, f"--twitch-api-header=Authorization=OAuth {auth_token}")
 
-            self.__proc = subprocess.Popen(stream_shell)
+            self.__proc = await asyncio.create_subprocess_exec(*stream_shell)
             self.raw_stream_url = f"http://localhost:{port}"
             i = 0
             while i < 5:
-                if not (self.__proc.poll() is None):
+                if self.__proc.returncode is not None:
                     return False
-                time.sleep(1)
+                await asyncio.sleep(1)
                 i += 1
             return True
         else:
@@ -193,9 +192,6 @@ class Twitch(DownloadBase, BatchCheck):
         try:
             if self.__proc is not None:
                 self.__proc.terminate()
-                self.__proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.__proc.kill()
         except:
             logger.exception(f'terminate {self.fname} failed')
         finally:

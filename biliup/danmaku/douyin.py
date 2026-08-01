@@ -31,7 +31,7 @@ class Douyin:
             Douyin.headers['user-agent'] = DouyinUtils.DOUYIN_USER_AGENT
 
             if "ttwid" not in Douyin.headers['Cookie']:
-                Douyin.headers['Cookie'] = f'ttwid={DouyinUtils.get_ttwid()};{Douyin.headers["Cookie"]}'
+                Douyin.headers['Cookie'] = f'ttwid={await DouyinUtils.get_ttwid()};{Douyin.headers["Cookie"]}'
 
             USER_UNIQUE_ID = DouyinDanmakuUtils.get_user_unique_id()
             VERSION_CODE = 180800 # https://lf-cdn-tos.bytescm.com/obj/static/webcast/douyin_live/7697.782665f8.js -> a.ry

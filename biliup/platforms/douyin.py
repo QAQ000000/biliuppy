@@ -1,7 +1,6 @@
 from typing import Optional
 from urllib.parse import unquote, urlparse, parse_qs, urlencode, urlunparse
 
-import requests
 import random
 
 from ..common.util import client
@@ -11,6 +10,23 @@ from ..common.abogus import ABogus
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
 from . import logger, match1, random_user_agent, json_loads, test_jsengine
+
+
+def select_quality(requested: str, quality_order: list[str], streams: dict) -> str:
+    """Select the nearest available quality, preferring a lower quality on ties."""
+    if requested in streams:
+        return requested
+    requested_index = quality_order.index(requested)
+    available = [quality for quality in quality_order if quality in streams]
+    if not available:
+        raise KeyError("no supported stream quality is available")
+    return min(
+        available,
+        key=lambda quality: (
+            abs(quality_order.index(quality) - requested_index),
+            quality_order.index(quality) < requested_index,
+        ),
+    )
 
 
 @Plugin.download(regexp=r'https?://(?:(?:www|m|live|v)\.)?douyin\.com')
@@ -35,7 +51,7 @@ class Douyin(DownloadBase):
         if self.fake_headers['cookie'] != "" and not self.fake_headers['cookie'].endswith(';'):
             self.fake_headers['cookie'] += ";"
         if "ttwid" not in self.fake_headers['cookie']:
-            self.fake_headers['cookie'] += f'ttwid={DouyinUtils.get_ttwid()};'
+            self.fake_headers['cookie'] += f'ttwid={await DouyinUtils.get_ttwid()};'
         if 'odin_ttid=' not in self.fake_headers['cookie']:
             self.fake_headers['cookie'] += f"odin_ttid={DouyinUtils.generate_odin_ttid()};"
         if '__ac_nonce=' not in self.fake_headers['cookie']:
@@ -159,32 +175,7 @@ class Douyin(DownloadBase):
             if quality not in quality_items:
                 quality = quality_items[0]
             try:
-                # 如果没有这个画质则取相近的 优先低清晰度
-                if quality not in stream_data:
-                    # 可选的清晰度 含自身
-                    optional_quality_items = [x for x in quality_items if x in stream_data.keys() or x == quality]
-                    # 自身在可选清晰度的位置
-                    optional_quality_index = optional_quality_items.index(quality)
-                    # 自身在所有清晰度的位置
-                    quality_index = quality_items.index(quality)
-                    # 高清晰度偏移
-                    quality_left_offset = None
-                    # 低清晰度偏移
-                    quality_right_offset = None
-
-                    if optional_quality_index + 1 < len(optional_quality_items):
-                        quality_right_offset = quality_items.index(
-                            optional_quality_items[optional_quality_index + 1]) - quality_index
-
-                    if optional_quality_index - 1 >= 0:
-                        quality_left_offset = quality_index - quality_items.index(
-                            optional_quality_items[optional_quality_index - 1])
-
-                    # 取相邻的清晰度
-                    if quality_right_offset <= quality_left_offset:
-                        quality = optional_quality_items[optional_quality_index + 1]
-                    else:
-                        quality = optional_quality_items[optional_quality_index - 1]
+                quality = select_quality(quality, quality_items, stream_data)
 
                 protocol = 'hls' if self.douyin_protocol == 'hls' else 'flv'
                 self.raw_stream_url = stream_data[quality]['main'][protocol]
@@ -262,11 +253,15 @@ class DouyinUtils:
     LONG_CHATSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 
     @staticmethod
-    def get_ttwid() -> Optional[str]:
-            if not DouyinUtils._douyin_ttwid:
-                page = requests.get("https://live.douyin.com/1-2-3-4-5-6-7-8-9-0", timeout=15)
-                DouyinUtils._douyin_ttwid = page.cookies.get("ttwid")
-            return DouyinUtils._douyin_ttwid
+    async def get_ttwid() -> Optional[str]:
+        if not DouyinUtils._douyin_ttwid:
+            page = await client.get(
+                "https://live.douyin.com/1-2-3-4-5-6-7-8-9-0",
+                headers=DouyinUtils.DOUYIN_HTTP_HEADERS,
+                timeout=15,
+            )
+            DouyinUtils._douyin_ttwid = page.cookies.get("ttwid")
+        return DouyinUtils._douyin_ttwid
 
 
     @staticmethod

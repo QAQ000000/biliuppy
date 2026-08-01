@@ -19,8 +19,7 @@ import {
 } from '@douyinfe/semi-icons'
 import Image from 'next/image'
 import ThemeButton from '../ui/ThemeButton'
-import { useSystemTheme, useTheme } from '../lib/utils'
-import { useWindowSize } from 'react-use'
+import { useSystemTheme, useTheme, useWindowSize } from '../lib/utils'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { Sider } = SeLayout
@@ -43,7 +42,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   // 兼容 PC 切移动端
   useEffect(() => {
-    const mobile = width <= 640
+    const mobile = width !== undefined && width <= 640
     setIsMobile(mobile)
     setIsCollapsed(current => mobile || current)
   }, [width])

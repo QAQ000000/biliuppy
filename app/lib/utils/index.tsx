@@ -45,8 +45,8 @@ export const registerMediaQuery = (
   return () => undefined
 }
 
-export const humDate = (time: number): string =>
-  new Date(time * 1000)
+export const humDate = (time: number | string | Date): string =>
+  new Date(typeof time === 'number' ? time * 1000 : time)
     .toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -70,6 +70,17 @@ export const useSystemTheme = () => {
     return () => mediaQuery.removeEventListener('change', handleChange)
   }, [])
   return theme
+}
+
+export const useWindowSize = () => {
+  const [size, setSize] = useState<{ width?: number; height?: number }>({})
+  useEffect(() => {
+    const update = () => setSize({ width: window.innerWidth, height: window.innerHeight })
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return size
 }
 
 export const useTheme = (mode: string, systemTheme: string) => {

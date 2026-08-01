@@ -16,6 +16,19 @@ export const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
 	return res.json();
 };
 
+export interface PaginatedResult<T> {
+	items: T[];
+	total: number;
+}
+
+export const paginatedFetcher = async <T>(input: RequestInfo | URL): Promise<PaginatedResult<T>> => {
+	const res = await fetch(API_BASE + input);
+	await handleResponse(res);
+	const items = await res.json() as T[];
+	const total = Number.parseInt(res.headers.get('X-Total-Count') ?? '', 10);
+	return { items, total: Number.isFinite(total) ? total : items.length };
+};
+
 export const proxy = async (input: RequestInfo | URL, init?: RequestInit) => {
 	const res = await fetch(API_BASE + input, init);
 	await handleResponse(res);
