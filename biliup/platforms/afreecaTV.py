@@ -7,7 +7,7 @@ import biliup.common.util
 from biliup.config import config
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
-from ..plugins import match1, logger
+from . import logger, match1
 
 # VALID_URL_BASE = r"https?://(.*?)\.afreecatv\.com/(?P<username>\w+)(?:/\d+)?"
 VALID_URL_BASE = r"https?://play\.afreecatv\.com/(?P<username>\w+)(?:/\d+)?"

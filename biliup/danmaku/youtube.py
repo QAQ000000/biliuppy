@@ -1,6 +1,6 @@
 import re, traceback, datetime, base64
 import asyncio
-from biliup.plugins import random_user_agent
+from biliup.platforms import random_user_agent
 
 # The core codes for YouTube support are basically from taizan-hokuto/pytchat
 

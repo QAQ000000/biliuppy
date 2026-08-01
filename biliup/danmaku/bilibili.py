@@ -6,9 +6,7 @@ from struct import pack, unpack
 import aiohttp
 import brotli
 
-from biliup.plugins import match1
-from biliup.plugins import random_user_agent
-from biliup.plugins import wbi, generate_fake_buvid3
+from biliup.platforms import generate_fake_buvid3, match1, random_user_agent, wbi
 
 logger = logging.getLogger('biliup')
 

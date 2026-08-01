@@ -14,6 +14,7 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import biliup.platforms
 import biliup.plugins
 from biliup.common.util import client
 from biliup.config import ConfigStore
@@ -91,6 +92,7 @@ class RecordingScheduler:
         if not self.enabled:
             return
         if not self._plugins_loaded:
+            Plugin(biliup.platforms)
             Plugin(biliup.plugins)
             self._plugins_loaded = True
         await self.reload()

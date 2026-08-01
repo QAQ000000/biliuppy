@@ -26,7 +26,7 @@ class Douyin:
     @staticmethod
     async def get_ws_info(url, context):
         async with aiohttp.ClientSession() as session:
-            from biliup.plugins.douyin import DouyinUtils
+            from biliup.platforms.douyin import DouyinUtils
             from .douyin_util import DouyinDanmakuUtils
             Douyin.headers['user-agent'] = DouyinUtils.DOUYIN_USER_AGENT
 

@@ -1,11 +1,11 @@
 import aiohttp
-from biliup.plugins import random_user_agent
+from biliup.platforms import random_user_agent
 
 from biliup.common.tars import tarscore
-from biliup.plugins import match1
-from biliup.plugins.huya_wup.wup_struct import EWebSocketCommandType
-from biliup.plugins.huya_wup.wup_struct.WebSocketCommand import HuyaWebSocketCommand
-from biliup.plugins.huya_wup.wup_struct.WSUserInfo import HuyaWSUserInfo
+from biliup.platforms import match1
+from biliup.platforms.huya_wup.wup_struct import EWebSocketCommandType
+from biliup.platforms.huya_wup.wup_struct.WebSocketCommand import HuyaWebSocketCommand
+from biliup.platforms.huya_wup.wup_struct.WSUserInfo import HuyaWSUserInfo
 
 
 class Huya:

@@ -7,7 +7,7 @@ import biliup.common.util
 from biliup.config import config
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
-from ..plugins import logger
+from . import logger
 
 
 @Plugin.download(regexp=r'(?:https?://)?(?:(?:www|m|live)\.)?nicovideo\.jp')

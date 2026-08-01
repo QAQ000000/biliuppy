@@ -1,7 +1,7 @@
 import httpx
 
-from biliup.plugins.huya_wup import DEFAULT_TICKET_NUMBER, Wup
-from biliup.plugins.huya_wup.packet import HuyaGetCdnTokenReq, HuyaGetCdnTokenRsp
+from biliup.platforms.huya_wup import DEFAULT_TICKET_NUMBER, Wup
+from biliup.platforms.huya_wup.packet import HuyaGetCdnTokenReq, HuyaGetCdnTokenRsp
 
 
 def main() -> None:

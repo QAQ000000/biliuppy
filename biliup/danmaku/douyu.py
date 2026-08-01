@@ -4,7 +4,7 @@ from struct import pack
 
 import aiohttp
 
-from biliup.plugins import match1
+from biliup.platforms import match1
 
 logger = logging.getLogger('biliup')
 

@@ -12,7 +12,7 @@ from ..config import config
 from ..danmaku import DanmakuClient
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
-from ..plugins import logger, match1, random_user_agent, json_loads, test_jsengine
+from . import json_loads, logger, match1, random_user_agent, test_jsengine
 
 
 DOUYU_DEFAULT_DID = "10000000000000000000000000001501"

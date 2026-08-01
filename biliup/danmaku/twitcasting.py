@@ -2,7 +2,7 @@ import json
 
 import aiohttp
 
-from biliup.plugins import random_user_agent
+from biliup.platforms import random_user_agent
 
 
 class Twitcasting:

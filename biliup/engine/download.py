@@ -18,7 +18,7 @@ from httpx import HTTPStatusError
 
 from biliup.common.util import check_timerange, client
 
-from biliup.plugins import random_user_agent
+from biliup.platforms import random_user_agent
 from PIL import Image
 
 from biliup.config import config

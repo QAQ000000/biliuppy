@@ -21,8 +21,8 @@ from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
 from . import logger, match1, json_loads
 
-from biliup.plugins.huya_wup import Wup, DEFAULT_TICKET_NUMBER
-from biliup.plugins.huya_wup.packet import (
+from biliup.platforms.huya_wup import DEFAULT_TICKET_NUMBER, Wup
+from biliup.platforms.huya_wup.packet import (
     HuyaGetCdnTokenReq,
     HuyaGetCdnTokenRsp
 )

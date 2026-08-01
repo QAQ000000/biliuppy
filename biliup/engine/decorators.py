@@ -47,7 +47,7 @@ class Plugin:
     def sorted_checker(cls, urls):
         if not urls:
             return {}
-        from ..plugins import general
+        from ..platforms import general
         curls = urls.copy()
         checker_plugins = {}
         for plugin in cls.download_plugins:
@@ -65,7 +65,7 @@ class Plugin:
 
     @classmethod
     def inspect_checker(cls, url):
-        from ..plugins import general
+        from ..platforms import general
         for plugin in cls.download_plugins:
             if not re.match(plugin.VALID_URL_BASE, url):
                 continue

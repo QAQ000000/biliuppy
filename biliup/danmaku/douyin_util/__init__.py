@@ -24,7 +24,7 @@ class DouyinDanmakuUtils:
 
     @staticmethod
     def get_signature(x_ms_stub: str):
-        from biliup.plugins.douyin import DouyinUtils
+        from biliup.platforms.douyin import DouyinUtils
         try:
             import jsengine
             ctx = jsengine.jsengine()

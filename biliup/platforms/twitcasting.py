@@ -5,7 +5,7 @@ from biliup.config import config
 from biliup.danmaku import DanmakuClient
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
-from ..plugins import logger, match1
+from . import logger, match1
 
 VALID_URL_BASE = r"https?://twitcasting\.tv/([^/]+)"
 
