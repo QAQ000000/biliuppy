@@ -1,0 +1,25 @@
+services:
+  biliup:
+    build: .
+    image: biliup-python:1.1.7
+    container_name: biliup
+    restart: unless-stopped
+    ports:
+      - "19159:19159"
+    environment:
+      BILIUP_HOME: /data
+      BILIUP_DATA_DIR: /data
+      BILIUP_DATABASE: /data/data.sqlite3
+      BILIUP_CORS_ORIGIN: http://localhost:19159
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:19159/healthz', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
