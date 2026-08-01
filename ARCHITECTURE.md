@@ -11,6 +11,16 @@ Browser -> FastAPI -> SQLAlchemy -> SQLite
                  `-> static Next.js export
 ```
 
+## Module Map
+
+- `api` owns HTTP and WebSocket compatibility contracts.
+- `core` owns paths and validated configuration.
+- `database` owns persistence models and migrations.
+- `services` owns application scheduling and recording lifecycle.
+- `platforms` owns live-site detection and stream discovery.
+- `integrations` owns external login, metadata, and upload adapters.
+- `danmaku` owns chat capture clients and their protocol assets.
+
 ## Filesystem
 
 All mutable paths derive from `BILIUP_HOME` and can be overridden independently:

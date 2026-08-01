@@ -6,7 +6,7 @@ from typing import Any
 
 from biliup.core import AppPaths
 from biliup.engine.upload import UploadBase
-from biliup.plugins.bili_webup import BiliWeb
+from biliup.integrations.uploaders.bili_web import BiliWeb
 
 
 def _resolve_files(files: list[str], paths: AppPaths) -> list[Path]:

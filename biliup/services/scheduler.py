@@ -14,18 +14,18 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import biliup.integrations.uploaders
 import biliup.platforms
-import biliup.plugins
 from biliup.common.util import client
 from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo, UploadStreamer
 from biliup.database.session import Database
 from biliup.engine import Plugin
+from biliup.integrations.uploader import upload_files
 
 from .hooks import HookRunner
 from .recorder import FFmpegRecorder, RecorderSpec
-from .uploader import upload_files
 
 logger = logging.getLogger("biliup.scheduler")
 
@@ -93,7 +93,7 @@ class RecordingScheduler:
             return
         if not self._plugins_loaded:
             Plugin(biliup.platforms)
-            Plugin(biliup.plugins)
+            Plugin(biliup.integrations.uploaders)
             self._plugins_loaded = True
         await self.reload()
 

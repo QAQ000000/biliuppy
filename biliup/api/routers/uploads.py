@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from biliup.database.models import UploadStreamer
-from biliup.services.uploader import upload_files
+from biliup.integrations.uploader import upload_files
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session

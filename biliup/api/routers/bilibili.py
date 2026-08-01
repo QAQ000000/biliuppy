@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from biliup.database.models import Configuration
-from biliup.services import bilibili as bili_service
+from biliup.integrations import bilibili as bili_service
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session

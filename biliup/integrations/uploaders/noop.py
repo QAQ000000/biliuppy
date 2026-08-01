@@ -1,7 +1,7 @@
 from typing import List
 
-from ..engine.upload import UploadBase, logger
-from ..engine import Plugin
+from biliup.engine import Plugin
+from biliup.engine.upload import UploadBase, logger
 
 
 @Plugin.upload(platform="Noop")

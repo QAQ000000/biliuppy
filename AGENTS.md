@@ -9,8 +9,10 @@ The backend is pure Python. Do not add Rust, PyO3, Maturin, SQLx, or Cargo depen
 - `biliup/core`: paths and Pydantic configuration. It must not import API or service modules.
 - `biliup/database`: SQLAlchemy models and Alembic migrations. Existing SQLite data must remain upgradeable.
 - `biliup/api`: FastAPI transport and compatibility routes. Business logic belongs in services.
-- `biliup/services`: scheduling, FFmpeg recording, hooks, login, and upload orchestration.
-- `biliup/plugins`: platform URL parsing and Bilibili protocol implementations.
+- `biliup/services`: scheduling, FFmpeg recording, hooks, and application lifecycle orchestration.
+- `biliup/platforms`: live platform URL matching, stream discovery, and platform protocol helpers.
+- `biliup/integrations`: external login, metadata, and upload adapters.
+- `biliup/danmaku`: platform danmaku clients and protocol assets.
 - `app`: Next.js frontend. API paths under `/v1` and `/bili` are compatibility contracts.
 
 ## Commands

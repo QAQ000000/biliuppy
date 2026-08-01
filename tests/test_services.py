@@ -9,10 +9,10 @@ from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database import Database
 from biliup.database.models import FileItem, UploadStreamer
-from biliup.services import bilibili as bili_service
+from biliup.integrations import bilibili as bili_service
+from biliup.integrations.uploader import upload_files
 from biliup.services.hooks import HookRunner
 from biliup.services.scheduler import RecordingScheduler, WorkerState, recording_allowed
-from biliup.services.uploader import upload_files
 
 
 def test_recording_allowed_filters_keywords_and_recurring_utc_ranges() -> None:
@@ -75,7 +75,7 @@ async def test_uploader_passes_python_biliweb_options(tmp_path: Path, monkeypatc
         def upload(self, files):
             captured["files"] = files
 
-    monkeypatch.setattr("biliup.services.uploader.BiliWeb", FakeBiliWeb)
+    monkeypatch.setattr("biliup.integrations.uploader.BiliWeb", FakeBiliWeb)
 
     await upload_files(
         ["sample.mp4"],

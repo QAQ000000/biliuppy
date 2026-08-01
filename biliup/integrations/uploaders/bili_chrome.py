@@ -7,8 +7,8 @@ from PIL import Image
 from typing import List
 
 from biliup.config import config
-from ..engine import Plugin
-from ..engine.upload import UploadBase, logger
+from biliup.engine import Plugin
+from biliup.engine.upload import UploadBase, logger
 
 
 @Plugin.upload("bilibili")

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from biliup.common.util import client
-from biliup.plugins.bili_webup import BiliBili, Data
+from biliup.integrations.uploaders.bili_web import BiliBili, Data
 
 TV_APP_KEY = "4409e2ce8ffd12b8"
 TV_APP_SECRET = "59b43e04ad6965f34319062b478f83dd"
