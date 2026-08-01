@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from biliup.api import create_app
 from biliup.core import AppSettings
+from biliup.database import Database
+from biliup.database.models import Configuration
 
 
 def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
@@ -81,6 +83,35 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert job == {"id": task_id, "kind": "upload", "status": "Completed", "error": None}
 
         assert client.delete(f"/v1/streamers/{streamer['id']}").status_code == 204
+
+
+def test_legacy_null_global_options_do_not_block_startup(tmp_path: Path) -> None:
+    database = Database(tmp_path / "data" / "data.sqlite3")
+    database.migrate()
+    with database.session_factory() as session:
+        session.add(
+            Configuration(
+                key="config",
+                value=json.dumps(
+                    {
+                        "filename_prefix": None,
+                        "segment_processor_parallel": None,
+                        "bili_liveapi": None,
+                        "segment_time": None,
+                    }
+                ),
+            )
+        )
+        session.commit()
+    database.dispose()
+
+    with make_client(tmp_path) as client:
+        config = client.get("/v1/configuration").json()
+
+    assert config["filename_prefix"] == "{streamer}%Y-%m-%d %H_%M_%S{title}"
+    assert config["segment_processor_parallel"] is False
+    assert config["segment_time"] is None
+    assert "bili_liveapi" not in config
 
 
 def test_bilibili_proxy_rejects_non_bilibili_hosts(tmp_path: Path) -> None:

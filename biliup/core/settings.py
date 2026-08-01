@@ -7,7 +7,7 @@ from typing import Any
 import tomli_w
 import tomllib
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .paths import AppPaths
@@ -68,6 +68,14 @@ class RecordingConfig(BaseModel):
     use_live_cover: bool = False
     streamers: dict[str, StreamerConfig] = Field(default_factory=dict)
     user: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_nulls(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        nullable_fields = {"file_size", "segment_time"}
+        return {key: item for key, item in value.items() if item is not None or key in nullable_fields}
 
 
 class AppSettings(BaseSettings):
