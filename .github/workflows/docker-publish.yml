@@ -2,9 +2,9 @@ name: Docker
 
 on:
   push:
-    # Publish `master` as Docker `latest` image.
+    # Publish `main` as Docker `latest` image.
     branches:
-      - master
+      - main
 
     # Publish `v1.2.3` tags as releases.
     tags:
@@ -18,7 +18,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/biliup/caution
+  IMAGE_NAME: ghcr.io/qaq000000/biliuppy
 
 jobs:
   # Run tests.
@@ -38,7 +38,7 @@ jobs:
           else
             pr_number=""
             repo_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY
-            branch_name="master"
+            branch_name="main"
           fi
           echo "PR_NUMBER=$pr_number" >> $GITHUB_ENV
           echo "REPO_URL=$repo_url" >> $GITHUB_ENV

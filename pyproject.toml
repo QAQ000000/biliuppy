@@ -40,6 +40,11 @@ dependencies = [
     "yt-dlp>=2025.7.21",
 ]
 
+[project.urls]
+Homepage = "https://github.com/QAQ000000/biliuppy"
+Repository = "https://github.com/QAQ000000/biliuppy.git"
+Issues = "https://github.com/QAQ000000/biliuppy/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",

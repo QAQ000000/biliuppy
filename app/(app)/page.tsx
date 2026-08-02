@@ -6,7 +6,7 @@ const Home: React.FC = () => (
       borderWidth: 0,
     }}
     height="100%"
-    src="https://biliup.github.io/biliup/docs/guide/changelog/"
+    src="https://qaq000000.github.io/biliuppy/docs/guide/changelog/"
   ></iframe>
 )
 

@@ -3,7 +3,7 @@ name: Zola on GitHub Pages
 on:
   push:
     branches:
-      - master 
+      - main
     paths:
       - docs/**
   pull_request:
@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
+    if: github.ref != 'refs/heads/main'
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           
   build_and_deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout main
         uses: actions/checkout@v4

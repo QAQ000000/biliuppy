@@ -44,8 +44,8 @@ biliup 项目采用 Python + FastAPI + Next.js 架构，欢迎贡献代码。
 
 ## 报告问题
 
-- [Bug report](https://github.com/biliup/biliup/issues/new?template=bug-report.yaml)
-- [Feature request](https://github.com/biliup/biliup/discussions/new?category=ideas)
+- [Bug report](https://github.com/QAQ000000/biliuppy/issues/new?template=bug-report.yaml)
+- [Feature request](https://github.com/QAQ000000/biliuppy/discussions/new?category=ideas)
 
 ## 改进文档
 

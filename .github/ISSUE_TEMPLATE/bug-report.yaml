@@ -16,7 +16,7 @@ body:
       label: Code of Conduct
       description: 你必须先同意以下内容
       options:
-        - label: 我已在 [Release](https://github.com/biliup/biliup/releases) 检阅最新版本并尝试，且问题依旧
+        - label: 我已在 [Release](https://github.com/QAQ000000/biliuppy/releases) 检阅最新版本并尝试，且问题依旧
           required: true
         - label: 我清楚知道，反馈非最新 Release 版的错误是无意义的
           required: true

@@ -7,7 +7,7 @@ url = "/docs/getting-started/quick-start/"
 url_button = "快速开始"
 repo_version = "Python 1.1.7"
 repo_license = "Open-source MIT License."
-repo_url = "https://github.com/biliup/biliup"
+repo_url = "https://github.com/QAQ000000/biliuppy"
 
 [[extra.menu.main]]
 name = "文档"
