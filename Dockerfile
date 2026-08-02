@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY app ./app
 COPY public ./public
+COPY scripts ./scripts
 COPY next.config.js tsconfig.json eslint.config.mjs ./
 RUN npm run build
 

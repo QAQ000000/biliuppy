@@ -192,6 +192,6 @@ class FFmpegRecorder:
         self.process.terminate()
         try:
             await asyncio.wait_for(self.process.wait(), timeout=10)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             self.process.kill()
             await self.process.wait()

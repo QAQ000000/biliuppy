@@ -5,10 +5,14 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-import tomllib
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 from .paths import AppPaths
 

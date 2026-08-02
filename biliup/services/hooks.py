@@ -68,7 +68,7 @@ class HookRunner:
                     process.communicate(json.dumps(payload, ensure_ascii=False).encode()),
                     timeout=self.timeout,
                 )
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 await asyncio.to_thread(_terminate_process_tree, process.pid)
                 await process.wait()
                 raise TimeoutError(f"Hook timed out after {self.timeout:g} seconds: {value}") from None
