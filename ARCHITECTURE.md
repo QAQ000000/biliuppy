@@ -43,3 +43,5 @@ Each `livestreamers` row owns one scheduler worker. A worker selects a Python pl
 ## Compatibility
 
 Alembic adopts the existing Rust-created tables without recreating them. File-based YAML/TOML streamers are imported only when the database has no streamer rows. Legacy uploader names `biliup-rs` and `stream_gears` are migrated to `bili_web`.
+
+Manual upload job status is stored in SQLite. The application retains the latest 100 terminal jobs; work interrupted by a process restart is marked `Cancelled` instead of being submitted again automatically.

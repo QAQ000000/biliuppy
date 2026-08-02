@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 
 from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database import Database
-from biliup.database.models import FileItem, StreamerInfo, UploadStreamer
+from biliup.database.models import BackgroundJobRecord, FileItem, StreamerInfo, UploadStreamer
 from biliup.integrations import bilibili as bili_service
 from biliup.integrations.uploader import upload_files
 from biliup.services.history import prune_history
@@ -331,6 +332,59 @@ async def test_background_job_logs_start_and_completion(caplog) -> None:
     messages = [record.getMessage() for record in caplog.records]
     assert any(f"Background upload job {job.id} started" in message for message in messages)
     assert any(f"Background upload job {job.id} completed in" in message for message in messages)
+
+
+async def test_background_jobs_persist_across_manager_restarts(tmp_path: Path) -> None:
+    database = Database(tmp_path / "jobs.sqlite3")
+    database.migrate()
+    manager = BackgroundJobManager(database)
+
+    completed = manager.submit("upload", asyncio.sleep(0))
+    await manager.tasks[completed.id]
+    await asyncio.sleep(0)
+
+    restored = BackgroundJobManager(database)
+    assert restored.get(completed.id) == completed
+
+
+async def test_background_job_errors_are_redacted_before_persistence(tmp_path: Path) -> None:
+    async def fail_with_secret() -> None:
+        raise RuntimeError("signature=upload-signature Cookie=session-secret")
+
+    database = Database(tmp_path / "jobs.sqlite3")
+    database.migrate()
+    manager = BackgroundJobManager(database)
+    failed = manager.submit("upload", fail_with_secret())
+    await manager.tasks[failed.id]
+
+    restored = BackgroundJobManager(database).get(failed.id)
+    assert restored is not None
+    assert restored.error == "signature=<redacted> Cookie=<redacted>"
+
+
+def test_background_jobs_mark_interrupted_work_and_prune_old_records(tmp_path: Path) -> None:
+    database = Database(tmp_path / "jobs.sqlite3")
+    database.migrate()
+    with database.session_factory() as session:
+        session.add(BackgroundJobRecord(job_id="running-job", kind="upload", status="Running"))
+        session.add_all(
+            BackgroundJobRecord(job_id=f"finished-{index}", kind="upload", status="Completed")
+            for index in range(5)
+        )
+        session.commit()
+
+    manager = BackgroundJobManager(database, max_completed=3)
+
+    interrupted = manager.get("running-job")
+    assert interrupted is not None
+    assert interrupted.status == "Cancelled"
+    assert interrupted.error == "Application restarted before the job completed"
+    assert manager.get("finished-0") is None
+    with database.session_factory() as session:
+        records = list(
+            session.scalars(select(BackgroundJobRecord).order_by(BackgroundJobRecord.id))
+        )
+    assert {record.job_id for record in records} == {"finished-3", "finished-4", "running-job"}
 
 
 async def test_hook_timeout_terminates_child_process(tmp_path: Path) -> None:

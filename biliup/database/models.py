@@ -19,6 +19,16 @@ class Configuration(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class BackgroundJobRecord(Base):
+    __tablename__ = "backgroundjobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class UploadStreamer(Base):
     __tablename__ = "uploadstreamers"
 

@@ -1,5 +1,6 @@
 import json
 import logging
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from biliup.api import create_app
-from biliup.api.app import redact_log_message
+from biliup.api.app import RedactingFilter, redact_log_message
 from biliup.api.routers.logs import TAIL_MAX_BYTES, filter_log_lines, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
@@ -40,6 +41,22 @@ def test_log_redaction_hides_credentials_and_signatures() -> None:
     assert "refresh-secret" not in redacted
     assert "cookie-secret" not in redacted
     assert redacted.count("<redacted>") == 6
+
+
+def test_log_redaction_sanitizes_exception_tracebacks() -> None:
+    record = logging.LogRecord("test", logging.ERROR, __file__, 1, "upload failed", (), None)
+    secret_message = "signature=upload-signature Cookie=session-secret"
+    try:
+        raise RuntimeError(secret_message)
+    except RuntimeError:
+        record.exc_info = sys.exc_info()
+
+    RedactingFilter().filter(record)
+    formatted = logging.Formatter("%(message)s").format(record)
+
+    assert "upload-signature" not in formatted
+    assert "session-secret" not in formatted
+    assert formatted.count("<redacted>") == 2
 
 
 def test_frontend_api_contract(tmp_path: Path) -> None:
@@ -113,6 +130,9 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert job == {"id": task_id, "kind": "upload", "status": "Completed", "error": None}
 
         assert client.delete(f"/v1/streamers/{streamer['id']}").status_code == 204
+
+    with make_client(tmp_path) as restarted_client:
+        assert restarted_client.get(f"/v1/uploads/{task_id}").json() == job
 
 
 def test_frontend_serves_exported_rsc_paths_and_head(tmp_path: Path, monkeypatch) -> None:

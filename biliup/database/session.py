@@ -24,11 +24,11 @@ class Database:
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-    def migrate(self) -> None:
+    def migrate(self, revision: str = "head") -> None:
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).with_name("migrations")))
         config.set_main_option("sqlalchemy.url", self.url.replace("%", "%%"))
-        command.upgrade(config, "head")
+        command.upgrade(config, revision)
 
     def sessions(self) -> Generator[Session, None, None]:
         session = self.session_factory()

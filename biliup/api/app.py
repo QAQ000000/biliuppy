@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-import re
 import secrets
 import sys
+import traceback
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -16,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from biliup.config import config
 from biliup.core import AppSettings
+from biliup.core.redaction import redact_sensitive_text
 from biliup.database import Database
 from biliup.services import BackgroundJobManager, RecordingScheduler
 from biliup.services.config_import import import_legacy_streamers
@@ -32,30 +33,16 @@ PUBLIC_PATHS = {
     "/login.html",
 }
 
-SENSITIVE_LOG_VALUE = re.compile(
-    r"(?i)(?P<prefix>['\"]?(?:csrf(?:_token)?|access_key|access_token|refresh_token|"
-    r"token|uptoken|w_rid|signature|upload_id|b_wet|x-upos-auth|"
-    r"x-amz-(?:credential|signature|security-token))['\"]?\s*[=:]\s*['\"]?)"
-    r"(?P<value>[^&\s,'\"}\]]+)"
-)
-SENSITIVE_LOG_HEADER = re.compile(r"(?i)(?P<prefix>\b(?:cookie|authorization)\s*[=:]\s*)(?P<value>[^\s]+)")
-
-
-def redact_log_message(message: str) -> str:
-    message = SENSITIVE_LOG_VALUE.sub(
-        lambda match: f"{match.group('prefix')}<redacted>",
-        message,
-    )
-    return SENSITIVE_LOG_HEADER.sub(
-        lambda match: f"{match.group('prefix')}<redacted>",
-        message,
-    )
+redact_log_message = redact_sensitive_text
 
 
 class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = redact_log_message(record.getMessage())
         record.args = ()
+        if record.exc_info:
+            record.exc_text = redact_log_message("".join(traceback.format_exception(*record.exc_info)))
+            record.exc_info = None
         return True
 
 
@@ -159,7 +146,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             config,
             enabled=app_settings.scheduler_enabled,
         )
-        jobs = BackgroundJobManager()
+        jobs = BackgroundJobManager(database)
         logging_handlers, log_handler = _configure_logging(
             paths,
             app_settings.log_level,
