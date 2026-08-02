@@ -1,105 +1,129 @@
 +++
-title = "FAQ"
-description = "常见问题解答"
-date = 2021-05-01T19:30:00+00:00
-updated = 2025-08-01T19:30:00+00:00
+title = "常见问题"
+description = "登录、录制、投稿、日志和升级问题。"
+date = 2026-08-02T08:00:00+00:00
+updated = 2026-08-02T08:00:00+00:00
 draft = false
-weight = 30
+weight = 10
 sort_by = "weight"
 template = "docs/page.html"
 
 [extra]
-lead = "Answers to frequently asked questions."
+lead = "常见问题与处理建议。"
 toc = true
 top = false
 +++
 
-## 如何登录B站？
+## 如何登录 B 站？
 
-在 WebUI 的用户管理中选择扫码登录。登录信息保存在统一数据目录，并可直接用于投稿模板。
+在 WebUI 的“投稿管理”中打开用户管理，选择扫码登录。账号信息保存为 `BILIUP_DATA_DIR` 下的 JSON 文件，可直接用于投稿模板。
 
-## 如何使用账号密码登录？
+不建议使用账号密码登录，容易触发验证码和风控。
 
-由于目前使用账号密码登录大概率触发验证码，建议使用扫码登录。
-如果仍需使用账号密码，在代码中调用：
+## 如何确认账号是否有效？
 
-```python
-from biliup.plugins.bili_webup import BiliBili, Data
-
-with BiliBili(Data()) as bili:
-    bili.login_by_password("username", "password")
-```
+用户管理会读取 B 站账号资料并显示头像和昵称。显示“Cookie 已失效”时，应删除该账号并重新扫码登录。不要在日志、Issue 或聊天中发送账号 JSON、Cookie、访问令牌。
 
 ## 上传失败怎么办？
 
-1. 检查 `cookies.json` 是否有效，可重新扫码登录
-2. 检查网络连接，国外VPS建议选择 `kodo` 线路
-3. 检查视频文件格式是否支持
-4. 查看日志中的具体错误信息
+按以下顺序检查：
+
+1. 在用户管理确认账号有效。
+2. 在投稿模板确认分区、标题、标签和转载来源等必填字段。
+3. 查看“上传日志”中的线路、HTTP 状态和投稿返回值。
+4. 切换 `lines` 后重新发起手动上传。
+5. 降低或适当提高 `threads`，通常从 `3` 开始测试。
+6. 确认录像文件仍存在且格式受 B 站支持。
+
+投稿失败不会执行默认删除操作，录像会保留用于重试。
+
+## 切换上传线路后重新上传会生效吗？
+
+会。手动上传任务在创建时读取最新模板和全局配置。保存新线路后重新上传，新任务会使用新线路；已经运行中的任务不会中途切换。
 
 ## 如何选择上传线路？
 
-国内VPS建议使用 `upos` 模式的 `bda2`（百度）线路。
-国外VPS建议使用 `upos` 模式的 `ws`（网宿）或 `qn`（七牛）线路，或 `bupfetch` 模式的 `kodo` 线路。
+优先使用 `AUTO`。需要手动测试时，国内网络可比较 `bda2`、`bldsa`、`qn`、`tx`，海外网络可比较 `txa`、`qn`、`alia`。线路速度随地区、运营商和时段变化，应以日志中的实际平均速度为准。
 
-## 为什么B站不能多P上传？
+## Web 上传快，但程序上传慢怎么办？
 
-B站网页端根据用户权重限制分P数量。权重不够的用户切换到客户端提交接口即可解除限制。
-> 用户等级大于3，且粉丝数>1000，web端投稿不限制分P数量。
+浏览器和程序可能命中不同 UPOS 节点。先比较线路，再调整 `threads`。如果单线程速度低，提高并发可能有效；线路限制并发时继续增加反而会失败。还应检查磁盘读取速度、代理和安全软件。
 
-## 如何设置定时录制？
+## 如何设置录制分段？
 
-在 WebUI 中为每个主播设置录制时间范围，或通过配置文件的 `segment_time` 参数设置分段时长。
+在全局设置或主播覆写中配置：
+
+- `segment_time`：最长分段时长，格式 `HH:MM:SS`
+- `file_size`：最大分段大小，单位 Byte
+
+同时设置时，先达到限制的一项结束当前分片。`segment_time` 不是定时录制时间范围；主播允许录制的时间范围应在主播编辑页设置。
 
 ## 如何录制弹幕？
 
-在 WebUI 中开启对应主播的弹幕录制开关，或在配置文件中设置 `danmaku: true`。
+在主播的 Bilibili 配置覆写中开启 `bilibili_danmaku`。其他平台使用各自的弹幕开关，例如 `douyu_danmaku`、`huya_danmaku`、`douyin_danmaku`。
 
-支持的弹幕录制平台：Bilibili、斗鱼、虎牙、抖音。
+弹幕以同名 XML 文件保存，不会自动烧录进视频。可以使用 DanmakuFactory 转为 ASS，或使用支持 XML 弹幕的播放器加载。
 
-## 录制的XML弹幕文件如何使用？
+## 清理直播历史会删除录像吗？
 
-- 使用 [DanmakuFactory](https://github.com/hihkm/DanmakuFactory) 将XML弹幕文件转化为ASS字幕文件
-- [AList](https://alist.nn.ci/zh/) 检测到同文件夹下的XML文件会自动挂载弹幕
-- 使用 [弹弹play](https://www.dandanplay.com/) 可直接挂载XML弹幕文件观看
+不会。清理功能只删除 SQLite 中的直播历史和关联文件条目，不删除磁盘录像。投稿后的自动删除由后处理配置控制。
 
-## Docker 部署后如何查看日志？
+## 为什么日志页面没有内容？
 
-```bash
-docker logs -f biliup
+确认：
+
+1. 服务已经产生对应类别的日志。
+2. `BILIUP_LOG_DIR` 指向当前服务使用的日志目录。
+3. 浏览器连接的是同一个服务端口。
+4. 日志没有刚刚被手动清理。
+
+日志页面按程序、录制和上传分类，同一条日志不会重复归入多个类别。
+
+## 如何限制日志和历史大小？
+
+全局设置中配置：
+
+- `log_file_max_size_mb`：单个日志文件上限，保留 5 个轮转备份
+- `history_max_records`：直播历史数据库记录上限
+
+全局设置还提供“清理日志”；直播历史页面提供“清理历史”。
+
+## 数据库在哪里？
+
+源码默认位于项目的 `data/data.sqlite3`。使用 `--home`、`BILIUP_HOME` 或 `BILIUP_DATABASE` 时，以指定路径为准。Docker Compose 默认映射为主机的 `./data/data.sqlite3`。
+
+## 如何升级？
+
+先停止服务并备份运行目录。源码更新后执行：
+
+```shell
+uv sync --extra dev
+npm ci
+npm run build
+uv run pytest -q
 ```
 
-## 如何升级到最新版本？
+Docker：
 
-```bash
-# Python 版本
-pip3 install --upgrade biliup
-
-# Docker 部署
-docker pull ghcr.io/biliup/caution:latest
-docker restart biliup
+```shell
+docker compose down
+docker compose build --pull
+docker compose up -d
 ```
 
-## 如何开机自启？
+数据库会在启动时自动迁移，不要删除旧数据库。
 
-参考 [安装指南](../guide/introduction/#linux下配置开机自启) 中的 systemd 配置。
+## 支持哪些平台？
 
-## 支持的直播平台有哪些？
-
-目前支持录制以下平台：
-- Bilibili（B站）
-- 斗鱼（Douyu）
-- 虎牙（Huya）
-- 抖音（Douyin）
-- Twitch
-- Youtube（YouTube Live）
-- 以及更多...
-
-## 如何配置文件上传？
-
-上传功能需要登录B站，通过 `biliup login` 获取 `cookies.json`，并放入启动 biliup 的路径即可。
+常用直播平台包括 Bilibili、斗鱼、虎牙、抖音、Twitch 和 YouTube。实际支持范围以 `biliup/platforms` 中已注册的平台插件及 WebUI 可创建的 URL 为准。
 
 ## 遇到问题如何反馈？
 
-- 提交 [GitHub Issue](https://github.com/biliup/biliup/issues)
-- 在 [Discussion](https://github.com/biliup/biliup/discussions) 中提问
+提交问题时提供：
+
+- 版本和启动方式
+- 操作系统与 Python、FFmpeg 版本
+- 问题发生时间和最小复现步骤
+- 已脱敏的相关日志
+
+不要提交 Cookie、账号 JSON、访问令牌、上传签名或私人录像链接。

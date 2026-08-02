@@ -41,6 +41,12 @@ export async function requestDelete<T>(url: string, { arg }: { arg: T }) {
 	return res;
 }
 
+export async function deleteResource(url: string) {
+	const res = await fetch(`${API_BASE}${url}`, { method: 'DELETE' });
+	await handleResponse(res);
+	return res;
+}
+
 export async function put<T>(url: string, { arg }: { arg: T }) {
 	const res = await fetch(`${API_BASE}${url}`, {
 		method: 'PUT',

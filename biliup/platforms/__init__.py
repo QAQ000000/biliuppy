@@ -104,7 +104,7 @@ class Wbi:
         key = [full[self.KEY_MAP[i]] for i in range(KEY_LENGTH)]
         self.key = ''.join(key)
         self.last_update = int(time.time())
-        logger.info(f"Updated wbi key successfully")
+        logger.debug("Updated WBI key successfully")
 
     def sign(self, query: dict, ts: int = 0):
         """

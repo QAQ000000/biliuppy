@@ -1,19 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
-import { Layout, Nav, Spin, Typography, Select, Card, Button, Toast, Tabs, TabPane } from '@douyinfe/semi-ui'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button, Card, Layout, Nav, Spin, TabPane, Tabs, Toast, Typography } from '@douyinfe/semi-ui'
 import {
+  IconClear,
   IconCustomerSupport,
   IconRefresh,
-  IconClear,
   IconSave,
 } from '@douyinfe/semi-icons'
 
-// 日志内容组件
+const LOG_FILE = 'biliup.log'
+const MAX_VISIBLE_LINES = 5000
+type LogView = 'all' | 'recording' | 'upload'
+
 interface LogContentProps {
-  logs: string[];
-  logContainerRef: React.RefObject<HTMLDivElement | null>;
-  isLoading: boolean;
+  logs: string[]
+  logContainerRef: React.RefObject<HTMLDivElement | null>
+  isLoading: boolean
 }
 
 const LogContent = ({ logs, logContainerRef, isLoading }: LogContentProps) => {
@@ -39,19 +42,21 @@ const LogContent = ({ logs, logContainerRef, isLoading }: LogContentProps) => {
       className="log-container"
       ref={logContainerRef}
       style={{
-        height: 'calc(100% - 40px)', // 减去 tabs 的高度
-        maxHeight: 'calc(100vh - 180px)', // 设置最大高度
+        flex: 1,
+        minHeight: 0,
         overflow: 'auto',
         padding: 12,
         backgroundColor: 'var(--semi-color-bg-1)',
         borderRadius: 4,
         whiteSpace: 'pre-wrap',
-        wordBreak: 'break-all'
+        wordBreak: 'break-all',
       }}
     >
       {logs.length > 0 ? (
         logs.map((log, index) => (
-          <div key={index} style={{ marginBottom: 2 }}>{log}</div>
+          <div key={index} style={{ marginBottom: 2 }}>
+            {log}
+          </div>
         ))
       ) : (
         <div style={{ color: 'var(--semi-color-text-2)', textAlign: 'center', marginTop: 20 }}>
@@ -65,86 +70,64 @@ const LogContent = ({ logs, logContainerRef, isLoading }: LogContentProps) => {
 export default function LogViewer() {
   const { Header, Content } = Layout
   const [logs, setLogs] = useState<string[]>([])
+  const [activeView, setActiveView] = useState<LogView>('all')
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('ds_update')
   const wsRef = useRef<WebSocket | null>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   const connectWebSocket = useCallback(() => {
+    const previous = wsRef.current
+    wsRef.current = null
+    previous?.close()
+
+    setIsConnected(false)
     setIsLoading(true)
     setLogs([])
 
-    // 关闭现有连接
-    if (wsRef.current) {
-      wsRef.current.close()
-    }
-
-    // 创建新的WebSocket连接
-    const isDev = process.env.NODE_ENV === 'development';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const server = isDev
-      ? process.env.NEXT_PUBLIC_API_SERVER?.replace(/^http/, 'ws') || `${protocol}//${window.location.host}`
-      : `${protocol}//${window.location.host}`;
-    const wsUrl = `${server}/v1/ws/logs?file=${activeTab}.log`;
-
-    const ws = new WebSocket(wsUrl)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const configuredServer = process.env.NEXT_PUBLIC_API_SERVER
+    const server = configuredServer
+      ? configuredServer.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '')
+      : `${protocol}//${window.location.host}`
+    const query = new URLSearchParams({ file: LOG_FILE })
+    if (activeView !== 'all') query.set('category', activeView)
+    const ws = new WebSocket(`${server}/v1/ws/logs?${query}`)
     wsRef.current = ws
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return
       setIsConnected(true)
       setIsLoading(false)
-      Toast.success('日志连接已建立')
     }
 
     ws.onmessage = (event) => {
-      setLogs(prev => [...prev, event.data])
+      if (wsRef.current !== ws) return
+      setLogs((current) => [...current, String(event.data)].slice(-MAX_VISIBLE_LINES))
     }
 
-    ws.onerror = (error) => {
-      console.error('WebSocket错误:', error)
-
-      // 检查是否是连接建立前WebSocket已关闭的错误
-      // 这种情况通常发生在组件卸载或用户切换标签时
-      if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        console.log('WebSocket在连接建立前已关闭')
-      } else {
-        // 其他错误仍然显示Toast提示
-        Toast.error('连接错误，请重试')
-      }
-
+    ws.onerror = () => {
+      if (wsRef.current !== ws) return
       setIsLoading(false)
+      Toast.error('日志连接失败，请重试')
     }
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return
+      wsRef.current = null
       setIsConnected(false)
-      console.log('WebSocket连接已关闭')
+      setIsLoading(false)
     }
-  }, [activeTab])
+  }, [activeView])
 
   useEffect(() => {
     connectWebSocket()
-
     return () => {
-      // 组件卸载时关闭WebSocket连接
-      if (wsRef.current) {
-        console.log('主动关闭WebSocket连接')
-        wsRef.current.close()
-      }
+      const ws = wsRef.current
+      wsRef.current = null
+      ws?.close()
     }
   }, [connectWebSocket])
-
-  const handleFileChange = (value: string) => {
-    setActiveTab(value)
-  }
-
-  const handleRefresh = () => {
-    connectWebSocket()
-  }
-
-  const handleClear = () => {
-    setLogs([])
-  }
 
   return (
     <>
@@ -168,7 +151,7 @@ export default function LogViewer() {
             </>
           }
           mode="horizontal"
-        ></Nav>
+        />
       </Header>
       <Content
         style={{
@@ -181,59 +164,65 @@ export default function LogViewer() {
       >
         <Card
           style={{ flex: 1, overflow: 'hidden' }}
-          bodyStyle={{ height: '100%', overflow: 'hidden', boxSizing: 'border-box' }}
+          bodyStyle={{
+            height: '100%',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
         >
           <Tabs
             type="line"
-            style={{
-              marginTop: -20,
-              marginBottom: -20
-            }}
-            activeKey={activeTab}
-            onChange={handleFileChange}
+            activeKey={activeView}
+            onChange={(value) => setActiveView(value as LogView)}
+            style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column' }}
+            contentStyle={{ display: 'flex', flex: 1, minHeight: 0 }}
             tabBarExtraContent={
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center'}}>
-                <Button
-                  icon={<IconSave />}
-                  onClick={() => (window.location.href = `/static/${activeTab}.log`)}
-                  type="primary"
-                  theme="solid"
-                  size="small"
-                >
-                  下载
-                </Button>
-                <Button
-                  icon={<IconRefresh />}
-                  onClick={handleRefresh}
-                  theme="light"
-                  size="small"
-                >
-                  刷新
-                </Button>
-                <Button
-                  icon={<IconClear />}
-                  onClick={handleClear}
-                  theme="light"
-                  size="small"
-                >
-                  清空
-                </Button>
-                <Typography.Text
-                  type={isConnected ? 'success' : 'danger'}
-                  style={{ marginLeft: 8, display: 'flex', alignItems: 'center' }}
-                >
-                  {isConnected ? '已连接' : '未连接'}
-                </Typography.Text>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Button
+                icon={<IconSave />}
+                onClick={() => (window.location.href = `/static/${LOG_FILE}`)}
+                type="primary"
+                theme="solid"
+                size="small"
+              >
+                下载
+              </Button>
+              <Button icon={<IconRefresh />} onClick={connectWebSocket} theme="light" size="small">
+                刷新
+              </Button>
+              <Button icon={<IconClear />} onClick={() => setLogs([])} theme="light" size="small">
+                清空
+              </Button>
+              <Typography.Text
+                type={isConnected ? 'success' : 'danger'}
+                style={{ marginLeft: 8, display: 'flex', alignItems: 'center' }}
+              >
+                {isConnected ? '已连接' : '未连接'}
+              </Typography.Text>
               </div>
             }
           >
-            <TabPane tab="主程序运行日志" itemKey="ds_update">
+            <TabPane
+              tab="全部日志"
+              itemKey="all"
+              style={activeView === 'all' ? { display: 'flex', flex: 1, minHeight: 0 } : undefined}
+            >
               <LogContent logs={logs} logContainerRef={logContainerRef} isLoading={isLoading} />
             </TabPane>
-            <TabPane tab="录制日志" itemKey="download">
+            <TabPane
+              tab="录制日志"
+              itemKey="recording"
+              style={activeView === 'recording' ? { display: 'flex', flex: 1, minHeight: 0 } : undefined}
+            >
               <LogContent logs={logs} logContainerRef={logContainerRef} isLoading={isLoading} />
             </TabPane>
-            <TabPane tab="上传日志" itemKey="upload">
+            <TabPane
+              tab="上传日志"
+              itemKey="upload"
+              style={activeView === 'upload' ? { display: 'flex', flex: 1, minHeight: 0 } : undefined}
+            >
               <LogContent logs={logs} logContainerRef={logContainerRef} isLoading={isLoading} />
             </TabPane>
           </Tabs>

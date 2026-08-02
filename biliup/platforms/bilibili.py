@@ -14,6 +14,12 @@ from ..engine.download import DownloadBase
 OFFICIAL_API = "https://api.live.bilibili.com"
 STREAM_NAME_REGEXP = r"/live-bvc/\d+/(live_[^/\.]+)"
 WBI_WEB_LOCATION = "444.8"
+WBI_UPDATE_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+
+
+def get_wbi_update_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    return WBI_UPDATE_LOCKS.setdefault(loop, asyncio.Lock())
 
 @Plugin.download(regexp=r'https?://(b23\.tv|live\.bilibili\.com)')
 class Bililive(DownloadBase):
@@ -70,7 +76,9 @@ class Bililive(DownloadBase):
         self.fake_headers['referer'] = self.url
 
         if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
-            await self.update_wbi()
+            async with get_wbi_update_lock():
+                if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
+                    await self.update_wbi()
 
         # 获取直播状态与房间标题
         try:
@@ -308,7 +316,9 @@ class Bililive(DownloadBase):
             ):
                 return nav_res['data']
             logger.error(f"{self.plugin_msg}: 获取 nav 失败-{nav_res}")
-        except:
+        except asyncio.CancelledError:
+            raise
+        except Exception:
             logger.error(f"{self.plugin_msg}: 获取 nav 失败", exc_info=True)
         return {}
 

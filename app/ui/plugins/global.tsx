@@ -1,14 +1,94 @@
 'use client'
-import React from 'react'
+import React, { useState } from 'react'
 import styles from '../../styles/dashboard.module.scss'
-import { Form, Select, Space, useFormApi } from '@douyinfe/semi-ui'
-import { IconUpload, IconDownload } from '@douyinfe/semi-icons'
+import { Button, Form, Popconfirm, Select, Space, Toast, useFormApi } from '@douyinfe/semi-ui'
+import { IconDeleteStroked, IconUpload, IconDownload, IconSetting } from '@douyinfe/semi-icons'
+import { deleteResource } from '../../lib/api-streamer'
 
 const Global: React.FC = () => {
   const formApi = useFormApi()
+  const [isClearingLogs, setIsClearingLogs] = useState(false)
+
+  const clearLogs = async () => {
+    setIsClearingLogs(true)
+    try {
+      const response = await deleteResource('/v1/logs')
+      const result = await response.json()
+      Toast.success(`日志已清理，删除 ${result.removed_backups} 个备份文件`)
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '日志清理失败')
+    } finally {
+      setIsClearingLogs(false)
+    }
+  }
 
   return (
     <>
+      <div className={styles.frameDeveloper}>
+        <div className={styles.frameInside}>
+          <div className={styles.group}>
+            <div className={styles.buttonOnlyIconSecond} />
+            <div
+              className={styles.lineStory}
+              style={{
+                color: 'var(--semi-color-bg-0)',
+                display: 'flex',
+              }}
+            >
+              <IconSetting size="small" />
+            </div>
+          </div>
+          <p className={styles.meegoSharedWebSettin}>程序运行设置</p>
+        </div>
+        <Form.InputNumber
+          field="log_file_max_size_mb"
+          label="日志文件大小上限（log_file_max_size_mb）"
+          extraText="单个日志文件达到此大小后自动轮转，保留最近 5 个备份文件。"
+          placeholder={10}
+          suffix="MB"
+          min={1}
+          max={10240}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Popconfirm
+          title="确认清理日志？"
+          content="将清空当前程序日志并删除全部轮转备份，此操作无法撤销。"
+          onConfirm={clearLogs}
+        >
+          <Button
+            icon={<IconDeleteStroked />}
+            type="danger"
+            theme="light"
+            loading={isClearingLogs}
+          >
+            清理日志
+          </Button>
+        </Popconfirm>
+        <Form.InputNumber
+          field="history_max_records"
+          label="直播历史数量上限（history_max_records）"
+          extraText="新历史入库时自动移除最旧的超额数据库记录，不会删除磁盘中的录播文件。"
+          placeholder={10000}
+          min={1}
+          max={1000000}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+      </div>
+
+      <Space />
+
       {/* 全局下载 */}
       <div className={styles.frameDownload}>
         <div className={styles.frameInside}>

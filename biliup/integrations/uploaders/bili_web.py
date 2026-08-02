@@ -4,8 +4,8 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
-import sys
 import time
 import urllib.parse
 from dataclasses import asdict, dataclass, field, InitVar
@@ -24,6 +24,106 @@ from requests.adapters import HTTPAdapter, Retry
 from biliup.config import config
 from biliup.engine import Plugin
 from biliup.engine.upload import UploadBase, logger
+from biliup.platforms import Wbi
+
+
+WEB_UPLOAD_LOCATION = "333.1024"
+MEMBER_FIRST_DEFAULT_DURATION = 3 * 24 * 60 * 60
+
+
+def resolve_copyright_source(copyright_source: str | None, fallback_url: str) -> str:
+    source = (copyright_source or "").strip()
+    return source or fallback_url.strip()
+
+
+class UploadProgress:
+    def __init__(self, protocol: str, total_bytes: int, started_at: float) -> None:
+        self.protocol = protocol
+        self.total_bytes = total_bytes
+        self.started_at = started_at
+        self.uploaded_bytes = 0
+        self.next_percent = 5
+
+    def add(self, size: int) -> None:
+        self.uploaded_bytes += size
+        percent = min(100.0, self.uploaded_bytes * 100 / self.total_bytes)
+        if percent < self.next_percent and self.uploaded_bytes < self.total_bytes:
+            return
+        while self.next_percent <= percent:
+            self.next_percent += 5
+        elapsed = max(time.perf_counter() - self.started_at, 0.001)
+        speed = self.uploaded_bytes / 1_000_000 / elapsed
+        logger.info(
+            "上传进度 protocol=%s progress=%.1f%% speed=%.2fMB/s bytes=%d/%d",
+            self.protocol,
+            percent,
+            speed,
+            self.uploaded_bytes,
+            self.total_bytes,
+        )
+
+
+def build_web_payload(video: 'Data', timestamp: int | None = None) -> dict:
+    """Build the current web creator-center submission payload."""
+    data = asdict(video)
+    extra_fields = data.pop('extra_fields', '')
+    now = int(time.time()) if timestamp is None else timestamp
+
+    payload = {
+        'cover': data['cover'],
+        'cover43': data['cover'],
+        'ai_cover': 0,
+        'is_ab_cover': 0,
+        'ab_cover_info': None,
+        'title': data['title'],
+        'copyright': data['copyright'],
+        'creation_statement': {'id': -1},
+        'tid': data['tid'],
+        'tag': data['tag'],
+        'desc': data['desc'],
+        'dynamic': data['dynamic'],
+        'recreate': 0,
+        'interactive': 0,
+        'videos': data['videos'],
+        'act_reserve_create': 0,
+        'act_reserve_create_title': '',
+        'no_disturbance': 0,
+        'is_only_self': int(bool(data['is_only_self'])),
+        'space_hidden': 2,
+        'watermark': {'state': 1},
+        'subtitle': data['subtitle'],
+        'charging_pay': data['charging_pay'],
+        'preview': {
+            'need_preview': 0,
+            'start_time': 0,
+            'end_time': 600,
+        },
+        'qa': {
+            'qa_enabled': 0,
+            'qa_id': None,
+        },
+        'member_first': {
+            'enabled': 0,
+            'exp_time': now + MEMBER_FIRST_DEFAULT_DURATION,
+        },
+        'limited_free': None,
+        'no_reprint': data['no_reprint'],
+        'up_selection_reply': bool(data['up_selection_reply']),
+        'up_close_reply': bool(data['up_close_reply']),
+        'up_close_danmu': bool(data['up_close_danmu']),
+        'dolby': data['dolby'],
+        'lossless_music': data['hires'],
+        'web_os': 1,
+    }
+    if data['source']:
+        payload['source'] = data['source']
+    if data['desc_v2']:
+        payload['desc_v2'] = data['desc_v2']
+    if data['dtime']:
+        payload['dtime'] = data['dtime']
+    if extra_fields:
+        payload.update(json.loads(extra_fields))
+    return payload
 
 
 @Plugin.upload(platform="bili_web")
@@ -128,16 +228,10 @@ class BiliWeb(UploadBase):
             video.title = self.data["format_title"][:80]  # 稿件标题限制80字
             if self.credits:
                 video.desc_v2 = self.creditsToDesc_v2()
-            else:
-                video.desc_v2=[{
-                    "raw_text": self.desc,
-                    "biz_id": "",
-                    "type": 1
-                }]
             video.desc = self.desc
             video.copyright = self.copyright
             if self.copyright == 2:
-                video.source = self.copyright_source or self.data["url"]  # 添加转载地址说明
+                video.source = resolve_copyright_source(self.copyright_source, self.data["url"])
             # 设置视频分区,默认为174 生活，其他分区
             video.tid = self.tid
             video.set_tag(self.tags)
@@ -155,7 +249,13 @@ class BiliWeb(UploadBase):
             if self.cover_path:
                 video.cover = bili.cover_up(self.cover_path).replace('http:', '')
             ret = bili.submit(self.submit_api)  # 提交视频
-        logger.info(f"上传成功: {ret}")
+        result_data = ret.get('data') or {}
+        logger.info(
+            "投稿成功 code=%s aid=%s bvid=%s",
+            ret.get('code'),
+            result_data.get('aid'),
+            result_data.get('bvid'),
+        )
         return file_list
 
     def creditsToDesc_v2(self):
@@ -270,7 +370,7 @@ class BiliBili:
     def login(self, persistence_path, user_cookie):
         self.persistence_path = user_cookie
         if os.path.isfile(self.persistence_path):
-            print('使用持久化内容上传')
+            logger.info('使用持久化内容上传')
             self.load()
         if self.cookies:
             try:
@@ -328,7 +428,7 @@ class BiliBili:
             return r
 
     def login_by_password(self, username, password):
-        print('使用账号上传')
+        logger.info('使用账号上传')
         key_hash, pub_key = self.get_key()
         encrypt_password = base64.b64encode(rsa.encrypt(f'{key_hash}{password}'.encode(), pub_key))
         payload = {
@@ -375,7 +475,7 @@ class BiliBili:
         data = self.__session.get("https://api.bilibili.com/x/web-interface/nav", timeout=5).json()
         if data["code"] != 0:
             raise Exception(data)
-        print('使用cookies上传')
+        logger.info('使用 cookies 上传')
 
     def sign(self, param):
         return hashlib.md5(f"{param}{self.appsec}".encode()).hexdigest()
@@ -405,7 +505,7 @@ class BiliBili:
             start = time.perf_counter()
             test = self.__session.request(method, f"https:{line['probe_url']}", data=data, timeout=30)
             cost = time.perf_counter() - start
-            print(line['query'], cost)
+            logger.info('检测上传线路 %s，耗时 %.3fs', line['query'], cost)
             if test.status_code != 200:
                 return
             if not min_cost or min_cost > cost:
@@ -516,21 +616,22 @@ class BiliBili:
         # 开始上传
         parts = []  # 分块信息
         chunks = math.ceil(total_size / chunk_size)  # 获取分块数量
+        start = time.perf_counter()
+        progress = UploadProgress('cos', total_size, start)
 
         async def upload_chunk(session, chunks_data, params):
             async with session.put(url, params=params, raise_for_status=True,
                                    data=chunks_data, headers=put_headers) as r:
-                end = time.perf_counter() - start
                 parts.append({"Part": {"PartNumber": params['chunk'] + 1, "ETag": r.headers['Etag']}})
-                sys.stdout.write(f"\r{params['end'] / 1000 / 1000 / end:.2f}MB/s "
-                                 f"=> {params['partNumber'] / chunks:.1%}")
+                progress.add(len(chunks_data))
 
-        start = time.perf_counter()
         await self._upload({
             'uploadId': upload_id,
             'chunks': chunks,
             'total': total_size
         }, file, chunk_size, upload_chunk, tasks=tasks)
+        if len(parts) != chunks:
+            raise RuntimeError(f"Upload incomplete: expected {chunks} parts, received {len(parts)}")
         cost = time.perf_counter() - start
         fetch_headers = {
             "X-Upos-Fetch-Source": ret["fetch_headers"]["X-Upos-Fetch-Source"],
@@ -563,7 +664,7 @@ class BiliBili:
             try:
                 res = self.__session.post("https:" + ret["fetch_url"], headers=fetch_headers, timeout=15).json()
                 if res.get('OK') == 1:
-                    logger.info(f'{filename} uploaded >> {total_size / 1000 / 1000 / cost:.2f}MB/s. {res}')
+                    logger.info('视频上传完成 protocol=cos speed=%.2fMB/s', total_size / 1_000_000 / cost)
                     return {"title": splitext(filename)[0], "filename": ret["bili_filename"], "desc": ""}
                 raise IOError(res)
             except IOError:
@@ -586,27 +687,26 @@ class BiliBili:
         # 开始上传
         parts = []  # 分块信息
         chunks = math.ceil(total_size / chunk_size)  # 获取分块数量
+        start = time.perf_counter()
+        progress = UploadProgress('kodo', total_size, start)
 
         async def upload_chunk(session, chunks_data, params):
             async with session.post(f'{url}/{len(chunks_data)}',
                                     data=chunks_data, headers=headers) as response:
-                end = time.perf_counter() - start
                 ctx = await response.json()
                 parts.append({"index": params['chunk'], "ctx": ctx['ctx']})
-                sys.stdout.write(f"\r{params['end'] / 1000 / 1000 / end:.2f}MB/s "
-                                 f"=> {params['partNumber'] / chunks:.1%}")
+                progress.add(len(chunks_data))
 
-        start = time.perf_counter()
         await self._upload({}, file, chunk_size, upload_chunk, tasks=tasks)
         cost = time.perf_counter() - start
 
-        logger.info(f'{filename} uploaded >> {total_size / 1000 / 1000 / cost:.2f}MB/s')
         parts.sort(key=lambda x: x['index'])
         self.__session.post(f"{endpoint}/mkfile/{total_size}/key/{base64.urlsafe_b64encode(key.encode()).decode()}",
                             data=','.join(map(lambda x: x['ctx'], parts)), headers=headers, timeout=10)
         r = self.__session.post(f"https:{fetch_url}", headers=fetch_headers, timeout=5).json()
         if r["OK"] != 1:
             raise Exception(r)
+        logger.info('视频上传完成 protocol=kodo speed=%.2fMB/s', total_size / 1_000_000 / cost)
         return {"title": splitext(filename)[0], "filename": bili_filename, "desc": ""}
 
     async def upos(self, file, total_size, ret, tasks=3):
@@ -626,16 +726,15 @@ class BiliBili:
         # 开始上传
         parts = []  # 分块信息
         chunks = math.ceil(total_size / chunk_size)  # 获取分块数量
+        start = time.perf_counter()
+        progress = UploadProgress('upos', total_size, start)
 
         async def upload_chunk(session, chunks_data, params):
             async with session.put(url, params=params, raise_for_status=True,
                                    data=chunks_data, headers=headers):
-                end = time.perf_counter() - start
                 parts.append({"partNumber": params['chunk'] + 1, "eTag": "etag"})
-                sys.stdout.write(f"\r{params['end'] / 1000 / 1000 / end:.2f}MB/s "
-                                 f"=> {params['partNumber'] / chunks:.1%}")
+                progress.add(len(chunks_data))
 
-        start = time.perf_counter()
         await self._upload({
             'uploadId': upload_id,
             'chunks': chunks,
@@ -649,18 +748,21 @@ class BiliBili:
             'output': 'json',
             'profile': 'ugcupos/bup'
         }
-        attempt = 0
-        while attempt <= 5:  # 一旦放弃就会丢失前面所有的进度，多试几次吧
+        last_error = None
+        for attempt in range(1, 7):  # 一旦放弃就会丢失前面所有的进度，多试几次吧
             try:
                 r = self.__session.post(url, params=p, json={"parts": parts}, headers=headers, timeout=15).json()
                 if r.get('OK') == 1:
-                    logger.info(f'{filename} uploaded >> {total_size / 1000 / 1000 / cost:.2f}MB/s. {r}')
+                    logger.info('视频上传完成 protocol=upos speed=%.2fMB/s', total_size / 1_000_000 / cost)
                     return {"title": splitext(filename)[0], "filename": splitext(basename(upos_uri))[0], "desc": ""}
-                raise IOError(r)
-            except IOError:
-                attempt += 1
-                logger.info(f"请求合并分片时出现问题，尝试重连，次数：" + str(attempt))
-                time.sleep(15)
+                raise OSError(r)
+            except (OSError, requests.RequestException, JSONDecodeError) as error:
+                last_error = error
+                if attempt == 6:
+                    break
+                logger.warning(f"请求合并分片时出现问题，15 秒后重试：{attempt}/6。{error}")
+                await asyncio.sleep(15)
+        raise RuntimeError("Failed to complete UPOS multipart upload after 6 attempts") from last_error
 
     @staticmethod
     async def _upload(params, file, chunk_size, afunc, tasks=3):
@@ -677,12 +779,26 @@ class BiliBili:
                 params['start'] = params['chunk'] * chunk_size
                 params['end'] = params['start'] + params['size']
                 clone = params.copy()
-                for i in range(10):
+                last_error = None
+                uploaded = False
+                for attempt in range(1, 5):
                     try:
                         await afunc(session, chunks_data, clone)
+                        uploaded = True
                         break
                     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-                        logger.error(f"retry chunk{clone['chunk']} >> {i + 1}. {e}")
+                        last_error = e
+                        if attempt == 4:
+                            break
+                        delay = min(2 ** attempt + random.random(), 64)
+                        logger.warning(
+                            f"retry chunk{clone['chunk']} >> {attempt}/4 in {delay:.1f}s. {e}"
+                        )
+                        await asyncio.sleep(delay)
+                if not uploaded:
+                    raise RuntimeError(
+                        f"Chunk {clone['chunk']} upload failed after 4 attempts"
+                    ) from last_error
 
         async with aiohttp.ClientSession() as session:
             await asyncio.gather(*[upload_chunk() for _ in range(tasks)])
@@ -715,12 +831,49 @@ class BiliBili:
 
     def submit_web(self):
         logger.info('使用网页端api提交')
-        post_data = asdict(self.video)
-        extra_fields = post_data.pop('extra_fields', '')
-        if extra_fields:
-            post_data.update(json.loads(extra_fields))
-        return self.__session.post(f'https://member.bilibili.com/x/vu/web/add?csrf={self.__bili_jct}', timeout=5,
-                                   json=post_data).json()
+        post_data = build_web_payload(self.video)
+        params = self._build_web_params()
+        return self.__session.post(
+            'https://member.bilibili.com/x/vu/web/add/v3',
+            params=params,
+            timeout=60,
+            json=post_data,
+        ).json()
+
+    def _build_web_params(self) -> dict:
+        if not self.__bili_jct:
+            raise RuntimeError("bili_jct is required for web submission")
+
+        current_time = time.time()
+        now = int(current_time)
+        params = {
+            'web_location': WEB_UPLOAD_LOCATION,
+            't': str(int(current_time * 1000)),
+            'csrf': self.__bili_jct,
+        }
+        try:
+            nav = self.__session.get(
+                'https://api.bilibili.com/x/web-interface/nav',
+                timeout=10,
+            ).json()
+            wbi_img = (nav.get('data') or {}).get('wbi_img') or {}
+            img_key = self._extract_wbi_key(wbi_img.get('img_url'))
+            sub_key = self._extract_wbi_key(wbi_img.get('sub_url'))
+            if not img_key or not sub_key:
+                raise ValueError("WBI image keys are missing")
+            signer = Wbi()
+            signer.update_key(img_key, sub_key)
+            signer.sign(params, ts=now)
+        except (requests.RequestException, JSONDecodeError, KeyError, TypeError, ValueError) as error:
+            logger.warning("无法生成网页投稿 WBI 签名，将使用基础参数提交：%s", error)
+        return params
+
+    @staticmethod
+    def _extract_wbi_key(url: str | None) -> str | None:
+        if not url:
+            return None
+        filename = url.rsplit('/', 1)[-1]
+        return filename.split('.', 1)[0] or None
 
     def submit_client(self):
         logger.info('使用客户端api端提交')

@@ -2,7 +2,7 @@
 #base_url = "https://biliup.org"
 base_url = "/biliup"
 title = "Biliup"
-description = "AdiDoks is a Zola theme helping you build modern documentation websites, which is a port of the Hugo theme Doks for Zola."
+description = "biliup Python Edition 直播录制与 B 站自动投稿文档。"
 
 # The site theme to use.
 theme = "adidoks"
@@ -46,28 +46,28 @@ highlight_code = true
 
 [extra]
 # Put all your custom variables here
-author = "Aaran Xu"
-github = "https://github.com/forgqi"
-twitter = "https://twitter.com/aaranxu"
-email = "aaranxu@outlook.com"
+author = "biliup contributors"
+github = "https://github.com/biliup/biliup"
+twitter = ""
+email = ""
 
 # If running on netlify.app site, set to true
 is_netlify = false
 
 # Set HTML file language
-language_code = "en-US"
+language_code = "zh-CN"
 
 # Set theme-color meta tag for Chrome browser
 theme_color = "#fff"
 
 # More about site's title
 title_separator = "|"  # set as |, -, _, etc
-title_addition = "Modern Documentation Theme"
+title_addition = "Python 直播录制与自动投稿"
 
 
 # Set date format in blog publish metadata
 timeformat = "%B %e, %Y" # e.g. June 14, 2021
-timezone = "America/New_York"
+timezone = "Asia/Shanghai"
 
 # Edit page on reposity or not
 edit_page = false

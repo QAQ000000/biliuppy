@@ -24,6 +24,7 @@ from biliup.database.session import Database
 from biliup.engine import Plugin
 from biliup.integrations.uploader import upload_files
 
+from .history import prune_history
 from .hooks import HookRunner
 from .recorder import FFmpegRecorder, RecorderSpec
 
@@ -88,9 +89,7 @@ class RecordingScheduler:
         self._plugins_loaded = False
         self.download_semaphore = asyncio.Semaphore(max(1, int(config.get("pool1_size", 5) or 5)))
         self.upload_semaphore = asyncio.Semaphore(max(1, int(config.get("pool2_size", 3) or 3)))
-        self.segment_semaphore = asyncio.Semaphore(
-            max(1, int(config.get("segment_processor_concurrency", 4) or 4))
-        )
+        self.segment_semaphore = asyncio.Semaphore(max(1, int(config.get("segment_processor_concurrency", 4) or 4)))
 
     async def start(self) -> None:
         if not self.enabled:
@@ -350,6 +349,12 @@ class RecordingScheduler:
             session.add(info)
             session.flush()
             session.add_all(FileItem(file=str(file), streamer_info_id=info.id) for file in files)
+            removed_records, _ = prune_history(
+                session,
+                int(self.config.get("history_max_records", 10_000) or 10_000),
+            )
+            if removed_records:
+                logger.info("Pruned %s old live history records", removed_records)
         context.update({"end_time": int(datetime.now().timestamp()), "file_list": [str(file) for file in files]})
         await self.hooks.run_commands(payload["downloaded_processor"], context)
         upload_succeeded: bool | None = None

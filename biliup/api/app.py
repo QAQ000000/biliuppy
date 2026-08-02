@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
+import sys
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -30,6 +32,32 @@ PUBLIC_PATHS = {
     "/login.html",
 }
 
+SENSITIVE_LOG_VALUE = re.compile(
+    r"(?i)(?P<prefix>['\"]?(?:csrf(?:_token)?|access_key|access_token|refresh_token|"
+    r"token|uptoken|w_rid|signature|upload_id|b_wet|x-upos-auth|"
+    r"x-amz-(?:credential|signature|security-token))['\"]?\s*[=:]\s*['\"]?)"
+    r"(?P<value>[^&\s,'\"}\]]+)"
+)
+SENSITIVE_LOG_HEADER = re.compile(r"(?i)(?P<prefix>\b(?:cookie|authorization)\s*[=:]\s*)(?P<value>[^\s]+)")
+
+
+def redact_log_message(message: str) -> str:
+    message = SENSITIVE_LOG_VALUE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        message,
+    )
+    return SENSITIVE_LOG_HEADER.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        message,
+    )
+
+
+class RedactingFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact_log_message(record.getMessage())
+        record.args = ()
+        return True
+
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -56,19 +84,28 @@ def _session_secret(paths, configured: str | None) -> str:
     return value
 
 
-def _configure_logging(paths, level: str) -> list[logging.Handler]:
+def _configure_logging(paths, level: str, max_size_mb: int) -> tuple[list[logging.Handler], RotatingFileHandler]:
     log_file = paths.logs / "biliup.log"
-    handlers: list[logging.Handler] = [
-        logging.StreamHandler(),
-        RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"),
-    ]
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max_size_mb * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handlers: list[logging.Handler] = [file_handler]
+    if sys.stderr.isatty():
+        handlers.insert(0, logging.StreamHandler())
+    for handler in handlers:
+        handler.addFilter(RedactingFilter())
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         handlers=handlers,
         force=True,
     )
-    return handlers
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    return handlers, file_handler
 
 
 def _close_logging_handlers(handlers: list[logging.Handler]) -> None:
@@ -76,6 +113,33 @@ def _close_logging_handlers(handlers: list[logging.Handler]) -> None:
     for handler in handlers:
         root.removeHandler(handler)
         handler.close()
+
+
+def _frontend_file(frontend: Path, relative: str) -> Path | None:
+    """Resolve regular files and Next.js static-export RSC paths."""
+    relative_path = Path(relative)
+    candidates = [
+        frontend / relative_path,
+        frontend / f"{relative}.html",
+        frontend / relative_path / "index.html",
+    ]
+
+    # Next static export turns nested RSC files into dotted request URLs, e.g.
+    # __next.!token.dashboard.__PAGE__.txt -> __next.!token/dashboard/__PAGE__.txt.
+    name = relative_path.name
+    if name.startswith("__next.") and name.endswith(".txt"):
+        parts = name.removesuffix(".txt").split(".")
+        if len(parts) > 2:
+            rsc_path = relative_path.parent / ".".join(parts[:2])
+            rsc_path = rsc_path.joinpath(*parts[2:-1], f"{parts[-1]}.txt")
+            candidates.append(frontend / rsc_path)
+
+    root = frontend.resolve()
+    for candidate in candidates:
+        target = candidate.resolve()
+        if target.is_relative_to(root) and target.is_file():
+            return target
+    return None
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -96,8 +160,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             enabled=app_settings.scheduler_enabled,
         )
         jobs = BackgroundJobManager()
-        app.state.context = AppContext(app_settings, paths, database, config, scheduler, jobs)
-        logging_handlers = _configure_logging(paths, app_settings.log_level)
+        logging_handlers, log_handler = _configure_logging(
+            paths,
+            app_settings.log_level,
+            effective_config.log_file_max_size_mb,
+        )
+        app.state.context = AppContext(
+            app_settings,
+            paths,
+            database,
+            config,
+            scheduler,
+            jobs,
+            log_handler,
+        )
         await scheduler.start()
         try:
             yield
@@ -150,26 +226,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             raise HTTPException(404, "file not found")
         return FileResponse(target)
 
-    @app.get("/{page_path:path}")
+    @app.api_route("/{page_path:path}", methods=["GET", "HEAD"])
     def frontend(page_path: str, request: Request):
         context: AppContext = request.app.state.context
         if not context.paths.frontend.is_dir():
             raise HTTPException(404, "frontend has not been built")
         relative = page_path.strip("/")
-        candidates = []
-        if not relative:
-            candidates.append(context.paths.frontend / "index.html")
-        else:
-            candidates.extend(
-                [
-                    context.paths.frontend / relative,
-                    context.paths.frontend / f"{relative}.html",
-                    context.paths.frontend / relative / "index.html",
-                ]
-            )
-        target = next((candidate for candidate in candidates if candidate.is_file()), None)
+        target = _frontend_file(context.paths.frontend, relative or "index.html")
         if target:
-            return FileResponse(target)
+            headers = None
+            if relative.startswith("_next/static/"):
+                headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+            return FileResponse(target, headers=headers)
+        if relative.startswith("_next/") or "/__next." in f"/{relative}":
+            raise HTTPException(404, "frontend asset not found")
         if relative != "login":
             return RedirectResponse("/login")
         raise HTTPException(404, "page not found")

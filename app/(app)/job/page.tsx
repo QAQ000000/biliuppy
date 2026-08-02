@@ -1,11 +1,11 @@
 'use client'
 
-import { Layout, Nav, Spin, Table, Typography } from '@douyinfe/semi-ui'
+import { Button, Layout, Nav, Popconfirm, Spin, Table, Toast, Typography } from '@douyinfe/semi-ui'
 import { SortOrder } from '@douyinfe/semi-ui/lib/es/table'
 import useSWR from 'swr'
-import { paginatedFetcher } from '@/app/lib/api-streamer'
+import { deleteResource, paginatedFetcher } from '@/app/lib/api-streamer'
 import { useState } from 'react'
-import { IconHistory } from '@douyinfe/semi-icons'
+import { IconDeleteStroked, IconHistory } from '@douyinfe/semi-icons'
 import { humDate } from '@/app/lib/utils'
 import Filter from "@/app/(app)/job/Filter";
 
@@ -28,11 +28,27 @@ interface HistoryRecord {
 export default function Home() {
   const { Header, Content } = Layout
   const [page, setPage] = useState(1)
+  const [isClearingHistory, setIsClearingHistory] = useState(false)
   const pageSize = 20
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     `/v1/streamer-info?page=${page}&page_size=${pageSize}`,
     paginatedFetcher<HistoryRecord>
   )
+
+  const clearHistory = async () => {
+    setIsClearingHistory(true)
+    try {
+      const response = await deleteResource('/v1/streamer-info')
+      const result = await response.json()
+      setPage(1)
+      await mutate()
+      Toast.success(`已清理 ${result.deleted_records} 条直播历史`)
+    } catch (clearError) {
+      Toast.error(clearError instanceof Error ? clearError.message : '直播历史清理失败')
+    } finally {
+      setIsClearingHistory(false)
+    }
+  }
   if (isLoading) {
     return <Spin size="large" />
   }
@@ -100,6 +116,22 @@ export default function Home() {
               </div>
               <h4 style={{ marginLeft: '12px' }}>直播历史</h4>
             </>
+          }
+          footer={
+            <Popconfirm
+              title="确认清理直播历史？"
+              content="将删除全部直播历史数据库记录，但不会删除磁盘中的录播文件。"
+              onConfirm={clearHistory}
+            >
+              <Button
+                icon={<IconDeleteStroked />}
+                type="danger"
+                theme="light"
+                loading={isClearingHistory}
+              >
+                清理历史
+              </Button>
+            </Popconfirm>
           }
           mode="horizontal"
         ></Nav>

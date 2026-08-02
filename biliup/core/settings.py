@@ -67,6 +67,8 @@ class RecordingConfig(BaseModel):
     pool1_size: int = 5
     pool2_size: int = 3
     max_upload_limit: int = 8
+    log_file_max_size_mb: int = Field(default=10, ge=1, le=10_240)
+    history_max_records: int = Field(default=10_000, ge=1, le=1_000_000)
     use_live_cover: bool = False
     streamers: dict[str, StreamerConfig] = Field(default_factory=dict)
     user: dict[str, Any] = Field(default_factory=dict)

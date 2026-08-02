@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -6,7 +7,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from biliup.api import create_app
-from biliup.api.routers.logs import TAIL_MAX_BYTES, tail_lines
+from biliup.api.app import redact_log_message
+from biliup.api.routers.logs import TAIL_MAX_BYTES, filter_log_lines, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
 from biliup.database.models import Configuration, FileItem, StreamerInfo
@@ -22,10 +24,37 @@ def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
     return TestClient(create_app(settings))
 
 
+def test_log_redaction_hides_credentials_and_signatures() -> None:
+    message = (
+        "request csrf=secret&access_key=mobile-token "
+        "X-Amz-Signature=upload-signature upload_id: multipart-id "
+        "{'refresh_token': 'refresh-secret'} Cookie: SESSDATA=cookie-secret"
+    )
+
+    redacted = redact_log_message(message)
+
+    assert "secret" not in redacted
+    assert "mobile-token" not in redacted
+    assert "upload-signature" not in redacted
+    assert "multipart-id" not in redacted
+    assert "refresh-secret" not in redacted
+    assert "cookie-secret" not in redacted
+    assert redacted.count("<redacted>") == 6
+
+
 def test_frontend_api_contract(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         assert client.get("/healthz").json() == {"status": "ok"}
-        assert client.get("/v1/configuration").json()["downloader"] == "ffmpeg"
+        initial_config = client.get("/v1/configuration").json()
+        assert initial_config["downloader"] == "ffmpeg"
+        assert initial_config["log_file_max_size_mb"] == 10
+        assert initial_config["history_max_records"] == 10_000
+
+        initial_config["log_file_max_size_mb"] = 25
+        updated_config = client.put("/v1/configuration", json=initial_config)
+        assert updated_config.status_code == 200
+        assert updated_config.json()["log_file_max_size_mb"] == 25
+        assert client.app.state.context.log_handler.maxBytes == 25 * 1024 * 1024
 
         created = client.post(
             "/v1/streamers",
@@ -58,7 +87,6 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         )
         assert template.status_code == 200
         assert client.get(f"/v1/upload/streamers/{template.json()['id']}").status_code == 200
-
         user = client.post("/v1/users", json={"key": "bilibili-cookies", "value": "data/cookies.json"})
         assert user.status_code == 200
         assert client.get("/v1/users").json()[0]["platform"] == "bilibili-cookies"
@@ -85,6 +113,32 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert job == {"id": task_id, "kind": "upload", "status": "Completed", "error": None}
 
         assert client.delete(f"/v1/streamers/{streamer['id']}").status_code == 204
+
+
+def test_frontend_serves_exported_rsc_paths_and_head(tmp_path: Path, monkeypatch) -> None:
+    frontend = tmp_path / "frontend"
+    rsc_file = frontend / "dashboard" / "__next.!token" / "dashboard" / "__PAGE__.txt"
+    rsc_file.parent.mkdir(parents=True)
+    rsc_file.write_text("rsc payload", encoding="utf-8")
+    chunk = frontend / "_next" / "static" / "chunks" / "app.js"
+    chunk.parent.mkdir(parents=True)
+    chunk.write_text("console.log('ok')", encoding="utf-8")
+    monkeypatch.setenv("BILIUP_FRONTEND_DIR", str(frontend))
+
+    with make_client(tmp_path) as client:
+        rsc_url = "/dashboard/__next.%21token.dashboard.__PAGE__.txt"
+        response = client.get(rsc_url)
+        head_response = client.head(rsc_url)
+        chunk_response = client.get("/_next/static/chunks/app.js")
+        missing_response = client.get("/_next/static/chunks/missing.js", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert response.text == "rsc payload"
+    assert head_response.status_code == 200
+    assert head_response.content == b""
+    assert chunk_response.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert missing_response.status_code == 404
+    assert "location" not in missing_response.headers
 
 
 def test_legacy_null_global_options_do_not_block_startup(tmp_path: Path) -> None:
@@ -149,15 +203,11 @@ def test_authentication_contract(tmp_path: Path) -> None:
     with make_client(tmp_path, auth=True) as client:
         assert client.get("/v1/users/biliup").status_code == 404
         assert client.get("/v1/configuration").status_code == 401
-        assert client.post(
-            "/v1/users/register", json={"username": "biliup", "password": "secret"}
-        ).status_code == 200
+        assert client.post("/v1/users/register", json={"username": "biliup", "password": "secret"}).status_code == 200
         assert client.get("/v1/configuration").status_code == 200
         assert client.get("/v1/logout").status_code == 204
         assert client.get("/v1/configuration").status_code == 401
-        assert client.post(
-            "/v1/users/login", json={"username": "biliup", "password": "secret"}
-        ).status_code == 200
+        assert client.post("/v1/users/login", json={"username": "biliup", "password": "secret"}).status_code == 200
         assert client.get("/v1/configuration").status_code == 200
 
 
@@ -185,6 +235,38 @@ def test_streamer_history_is_paginated_and_includes_files(tmp_path: Path) -> Non
     assert response.json()[0]["name"] == "streamer-14"
     assert response.json()[0]["files"][0]["file"] == "recording-14.mp4"
     assert "T" in response.json()[0]["date"]
+
+
+def test_clear_streamer_history_keeps_recording_files(tmp_path: Path) -> None:
+    recording = tmp_path / "downloads" / "keep.mp4"
+    recording.parent.mkdir(parents=True)
+    recording.write_bytes(b"video")
+
+    with make_client(tmp_path) as client:
+        database = client.app.state.context.database
+        with database.session_factory.begin() as session:
+            info = StreamerInfo(
+                name="demo",
+                url="https://example.invalid/live",
+                title="demo title",
+                date=datetime(2026, 1, 1),
+                live_cover_path="",
+            )
+            info.files.append(FileItem(file=str(recording)))
+            session.add(info)
+
+        response = client.delete("/v1/streamer-info")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "cleared": True,
+            "deleted_records": 1,
+            "deleted_file_entries": 1,
+        }
+        with database.session_factory() as session:
+            assert session.query(StreamerInfo).count() == 0
+            assert session.query(FileItem).count() == 0
+        assert recording.read_bytes() == b"video"
 
 
 def test_log_tail_reads_a_bounded_suffix(tmp_path: Path, monkeypatch) -> None:
@@ -231,3 +313,40 @@ def test_logging_handler_is_closed_after_lifespan(tmp_path: Path) -> None:
     moved = log_path.with_suffix(".moved")
     log_path.rename(moved)
     assert moved.is_file()
+
+
+def test_log_category_filter_keeps_related_traceback_lines() -> None:
+    lines = [
+        "2026-08-02 10:00:00 INFO biliup.recorder Starting FFmpeg recording for demo",
+        "2026-08-02 10:01:00 ERROR biliup.jobs Background upload job abc failed",
+        '  File "uploader.py", line 10, in upload_files',
+        "RuntimeError: upload failed",
+        "2026-08-02 10:02:00 INFO biliup.scheduler Streamer check completed",
+    ]
+
+    upload_lines, current = filter_log_lines(lines, "upload")
+
+    assert upload_lines == lines[1:4]
+    assert current == "other"
+
+
+def test_clear_logs_truncates_active_file_and_removes_backups(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    log_path = log_dir / "biliup.log"
+    log_path.write_text("before clear\n", encoding="utf-8")
+    (log_dir / "biliup.log.1").write_text("backup one\n", encoding="utf-8")
+    (log_dir / "biliup.log.2").write_text("backup two\n", encoding="utf-8")
+
+    with make_client(tmp_path) as client:
+        response = client.delete("/v1/logs")
+
+        assert response.status_code == 200
+        assert response.json() == {"cleared": True, "removed_backups": 2}
+        assert log_path.read_text(encoding="utf-8") == ""
+        assert not (log_dir / "biliup.log.1").exists()
+        assert not (log_dir / "biliup.log.2").exists()
+
+        record = logging.LogRecord("biliup.test", logging.INFO, __file__, 1, "after clear", (), None)
+        client.app.state.context.log_handler.emit(record)
+        assert "after clear" in log_path.read_text(encoding="utf-8")

@@ -2,7 +2,7 @@
 title = "更新日志"
 description = "CHANGELOG"
 date = 2021-05-01T08:20:00+00:00
-updated = 2021-05-01T08:20:00+00:00
+updated = 2026-08-02T08:00:00+00:00
 draft = false
 weight = 20
 sort_by = "weight"
@@ -19,29 +19,30 @@ top = false
 - 🔧已修复的问题
 - ⚠️需要手动操作的更新信息
 
-## 1.1.7
+## 1.1.7 Python Edition - 2026-08-02
+
 ### 💡新添加的功能
-- Rust CLI 版本新增平台插件系统，支持 B站(bilibili)、斗鱼(douyu)、虎牙(huya)、抖音(douyin) 直播检测
-- Rust CLI 版本新增 Web 服务模式（`biliup server`），支持 WebUI 管理主播
-- 新增主播暂停/恢复功能（API + 前端组件）
-- 新增 CORS 配置支持，通过环境变量 `BILIUP_CORS_ORIGIN` 配置跨域来源
-- 新增 Docker 构建 Rust 二进制版本支持
-- 新增文件上传 API（`POST /v1/uploads`）
-- 新增合集(SEASON)管理功能
-- 新增 WebSocket 实时日志推送
+
+- 后端、调度、平台检测、B 站登录和投稿链路统一为 Python
+- FastAPI 提供 WebUI 与兼容 API，SQLAlchemy/Alembic 管理 SQLite
+- FFmpeg 分段录制、任务暂停、下播确认、上传失败重试与录像保留
+- B 站扫码登录、手动重传、上传线路选择、分片并发和进度日志
+- 日志分类、轮转、大小上限、脱敏和清理
+- 直播历史分页、数量上限和清理，清理不会删除磁盘录像
 
 ### 🔧已修复的问题
-- 修复 Rust 版本直播状态检查时 `unwrap()` 导致的 panic 风险
-- 修复下载管理器为空导致无法添加主播的问题
-- 修复前端缺少 `@douyinfe/semi-icons` 依赖的问题
-- 修复 CORS 配置硬编码问题
 
-### ⚠️需要手动操作的更新信息
-- Docker 部署方式变更：从 Python wheel 镜像改为 Rust 二进制镜像，需使用 `docker build .` 自行构建
-- Rust CLI 版本命令变更：`biliup start` 改为 `biliup server`
-- 数据库迁移：旧版 SQLite 数据库需清理 `tower_sessions` 表中的无效会话数据
+- 修复开播、录制、下播、分段、历史入库和自动投稿生命周期
+- 修复投稿参数兼容、APP/Web 提交结果判断及上传线路切换
+- 修复日志页面无法读取、重复显示和缺少上传日志的问题
+- 修复 Next.js 静态导出 RSC 路径与 HEAD 请求，减少 WebUI 切页延迟
+- 缓存 B 站账号资料和头像，避免多个组件重复外部请求
 
-**Full Changelog**:[v1.1.6...v1.1.7](https://github.com/biliup/biliup/compare/v1.1.6...v1.1.7)
+### ⚠️升级说明
+
+- 启动时自动迁移已有 SQLite 数据库，不要删除或重建旧数据库
+- 升级前停止服务并备份 `BILIUP_HOME`，至少备份数据库和账号 JSON
+- 发布 wheel 已包含 WebUI；源码更新后需重新执行 `npm run build`
 
 ## 1.1.6
 ### What's Changed

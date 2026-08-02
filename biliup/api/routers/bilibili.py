@@ -99,4 +99,5 @@ async def proxy(url: str = Query(...)) -> Response:
         content=response.content,
         status_code=response.status_code,
         media_type=response.headers.get("content-type"),
+        headers={"Cache-Control": "public, max-age=3600"},
     )

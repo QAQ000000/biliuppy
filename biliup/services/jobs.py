@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Coroutine
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -49,10 +50,18 @@ class BackgroundJobManager:
 
     async def _run(self, job: BackgroundJob, operation: Coroutine[Any, Any, None]) -> None:
         job.status = "Running"
+        started_at = time.perf_counter()
+        logger.info("Background %s job %s started", job.kind, job.id)
         try:
             await operation
         except asyncio.CancelledError:
             job.status = "Cancelled"
+            logger.info(
+                "Background %s job %s cancelled after %.2fs",
+                job.kind,
+                job.id,
+                time.perf_counter() - started_at,
+            )
             raise
         except Exception as exc:
             job.status = "Error"
@@ -60,6 +69,12 @@ class BackgroundJobManager:
             logger.exception("Background %s job %s failed", job.kind, job.id)
         else:
             job.status = "Completed"
+            logger.info(
+                "Background %s job %s completed in %.2fs",
+                job.kind,
+                job.id,
+                time.perf_counter() - started_at,
+            )
 
     def get(self, job_id: str) -> BackgroundJob | None:
         return self.jobs.get(job_id)

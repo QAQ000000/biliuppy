@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from biliup import __version__
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo
+from biliup.services.history import prune_history
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session
@@ -49,6 +50,17 @@ def list_streamer_info(
 def list_streamer_files(info_id: int, session: Session = Depends(get_session)) -> list[dict]:
     rows = session.scalars(select(FileItem).where(FileItem.streamer_info_id == info_id)).all()
     return [orm_dict(row) for row in rows]
+
+
+@router.delete("/v1/streamer-info")
+def clear_streamer_info(session: Session = Depends(get_session)) -> dict[str, int | bool]:
+    deleted_records, deleted_file_entries = prune_history(session, keep=0)
+    session.commit()
+    return {
+        "cleared": True,
+        "deleted_records": deleted_records,
+        "deleted_file_entries": deleted_file_entries,
+    }
 
 
 @router.get("/v1/status")

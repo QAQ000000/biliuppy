@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
 
 from sqlalchemy import select
 
@@ -20,6 +21,7 @@ class AppContext:
     config: ConfigStore
     scheduler: RecordingScheduler
     jobs: BackgroundJobManager
+    log_handler: RotatingFileHandler
 
 
 def load_effective_config(database: Database, settings: AppSettings, paths: AppPaths) -> RecordingConfig:

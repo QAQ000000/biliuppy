@@ -8,7 +8,7 @@ import { useBiliUsers } from '../lib/use-streamers'
 
 type PluginProps = {
   entity?: LiveStreamerEntity
-  list?: { value: number; label: React.ReactNode }[]
+  list?: { value: string; label: React.ReactNode }[]
   initValues?: any
 }
 

@@ -37,4 +37,5 @@ async def put_configuration(
         session.add(Configuration(key="config", value=value))
     session.commit()
     context.config.replace(validated)
+    context.log_handler.maxBytes = validated.log_file_max_size_mb * 1024 * 1024
     return json.loads(value)

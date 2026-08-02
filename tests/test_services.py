@@ -13,9 +13,35 @@ from biliup.database import Database
 from biliup.database.models import FileItem, StreamerInfo, UploadStreamer
 from biliup.integrations import bilibili as bili_service
 from biliup.integrations.uploader import upload_files
+from biliup.services.history import prune_history
 from biliup.services.hooks import HookRunner
 from biliup.services.jobs import BackgroundJobManager
 from biliup.services.scheduler import RecordingScheduler, WorkerState, recording_allowed
+
+
+def test_history_retention_prunes_oldest_database_records(tmp_path: Path) -> None:
+    database = Database(tmp_path / "data.sqlite3")
+    database.migrate()
+    with database.session_factory.begin() as session:
+        for index in range(5):
+            info = StreamerInfo(
+                name=f"streamer-{index}",
+                url=f"https://example.invalid/{index}",
+                title=f"title-{index}",
+                date=datetime(2026, 1, 1),
+                live_cover_path="",
+            )
+            info.files.append(FileItem(file=f"recording-{index}.mp4"))
+            session.add(info)
+
+    with database.session_factory.begin() as session:
+        assert prune_history(session, keep=2) == (3, 3)
+
+    with database.session_factory() as session:
+        remaining = session.query(StreamerInfo).order_by(StreamerInfo.id.desc()).all()
+        assert [row.name for row in remaining] == ["streamer-4", "streamer-3"]
+        assert session.query(FileItem).count() == 2
+    database.dispose()
 
 
 def test_recording_allowed_filters_keywords_and_recurring_utc_ranges() -> None:
@@ -295,6 +321,18 @@ async def test_background_jobs_keep_only_recent_terminal_entries() -> None:
     assert not manager.tasks
 
 
+async def test_background_job_logs_start_and_completion(caplog) -> None:
+    manager = BackgroundJobManager()
+
+    with caplog.at_level("INFO", logger="biliup.jobs"):
+        job = manager.submit("upload", asyncio.sleep(0))
+        await manager.tasks[job.id]
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(f"Background upload job {job.id} started" in message for message in messages)
+    assert any(f"Background upload job {job.id} completed in" in message for message in messages)
+
+
 async def test_hook_timeout_terminates_child_process(tmp_path: Path) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     marker = tmp_path / "orphaned.txt"
@@ -501,9 +539,7 @@ async def test_parallel_segment_hooks_are_bounded(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", SegmentedRecorder)
     monkeypatch.setattr(scheduler.hooks, "run_commands", bounded_hook)
-    await scheduler._record_active(
-        WorkerState(streamer_id=7), scheduler_payload(parallel=True), SchedulerChecker()
-    )
+    await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(parallel=True), SchedulerChecker())
 
     assert peak == 2
     database.dispose()

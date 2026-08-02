@@ -1,12 +1,41 @@
 import useSWR from "swr";
 
 import {
+  API_BASE,
   BiliType,
   fetcher,
-  LiveStreamerEntity, proxy,
+  LiveStreamerEntity,
   User
 } from "./api-streamer";
-import {useEffect, useState} from "react";
+
+const NO_FACE_URL = "https://i0.hdslb.com/bfs/face/member/noface.jpg";
+
+type BiliUser = User & {
+  face: string;
+};
+
+const avatarUrl = (face: string) =>
+  `${API_BASE}/bili/proxy?url=${encodeURIComponent(face)}`;
+
+async function loadBiliUsers(users: User[]): Promise<BiliUser[]> {
+  return Promise.all(users.map(async (item) => {
+    try {
+      const res = await fetcher(`/bili/space/myinfo?user=${encodeURIComponent(item.value)}`);
+      return {
+        ...item,
+        name: res.data.name,
+        face: avatarUrl(res.data?.face || NO_FACE_URL),
+      };
+    } catch (error) {
+      console.error(error);
+      return {
+        ...item,
+        name: "Cookie已失效",
+        face: avatarUrl(NO_FACE_URL),
+      };
+    }
+  }));
+}
 
 
 export default function useStreamers() {
@@ -20,40 +49,21 @@ export default function useStreamers() {
 
 export function useBiliUsers() {
   const {data, error, isLoading} = useSWR<User[]>("/v1/users", fetcher);
-  const [list, setList] = useState<any[]>([]);
-  useEffect(() => {
-    if (!data || data.length === 0) {
-      setList([])
-      return;
-    }
-    const updateList = async (item: User) => {
-      try {
-        const res = await fetcher(`/bili/space/myinfo?user=${item.value}`, undefined);
-        const pRes = await proxy(`/bili/proxy?url=${res.data?.face}`);
-        const myBlob = await pRes.blob();
-
-        return {
-          ...item,
-          name: res.data.name,
-          face: URL.createObjectURL(myBlob),
-        };
-      } catch (error) {
-        console.error(error);
-        const pRes = await proxy("/bili/proxy?url=https://i0.hdslb.com/bfs/face/member/noface.jpg");
-        const myBlob = await pRes.blob();
-        return {
-          ...item,
-          name: "Cookie已失效",
-          face: URL.createObjectURL(myBlob),
-        };
-      }
-    };
-    Promise.all(data.map(updateList)).then(setList);
-  }, [data])
+  const profileKey = data
+    ? ["bili-user-profiles", data.map(item => `${item.id}:${item.value}`).join("|")]
+    : null;
+  const {
+    data: list = [],
+    error: profileError,
+    isLoading: profilesLoading,
+  } = useSWR<BiliUser[]>(profileKey, () => loadBiliUsers(data ?? []), {
+    dedupingInterval: 5 * 60 * 1000,
+    revalidateOnFocus: false,
+  });
 
   return {
-    isLoading,
-    isError: error,
+    isLoading: isLoading || profilesLoading,
+    isError: error || profileError,
     biliUsers: list,
   };
 }
