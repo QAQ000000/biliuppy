@@ -1,4 +1,4 @@
-import shutil
+import sqlite3
 from pathlib import Path
 
 from sqlalchemy import inspect, select
@@ -17,15 +17,28 @@ def test_fresh_database_schema(tmp_path: Path) -> None:
 
 
 def test_existing_database_is_adopted_without_losing_configuration(tmp_path: Path) -> None:
-    source = Path(__file__).resolve().parents[1] / "data" / "data.sqlite3"
     target = tmp_path / "legacy.sqlite3"
-    shutil.copy2(source, target)
+    expected = [
+        ("config", '{"downloader":"ffmpeg","lines":"bda2"}'),
+        ("app", '{"hot_reload":false}'),
+    ]
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "CREATE TABLE configuration ("
+            "id INTEGER PRIMARY KEY, key VARCHAR NOT NULL, value TEXT NOT NULL)"
+        )
+        connection.executemany(
+            "INSERT INTO configuration (key, value) VALUES (?, ?)",
+            expected,
+        )
+
     database = Database(target)
     with database.session_factory() as session:
-        before = list(session.scalars(select(Configuration.value)))
+        before = list(session.scalars(select(Configuration.value).order_by(Configuration.id)))
 
     database.migrate()
 
     with database.session_factory() as session:
-        after = list(session.scalars(select(Configuration.value)))
+        after = list(session.scalars(select(Configuration.value).order_by(Configuration.id)))
+    assert before == [value for _, value in expected]
     assert after == before

@@ -12,6 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/main'
+    permissions:
+      contents: read
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -27,6 +29,8 @@ jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
