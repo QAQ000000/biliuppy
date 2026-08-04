@@ -24,6 +24,7 @@ from biliup.database.models import FileItem, LiveStreamer, StreamerInfo, UploadS
 from biliup.database.session import Database
 from biliup.engine import Plugin, StreamProbeResult, StreamStatus
 from biliup.integrations.uploader import upload_files
+from biliup.platforms.bilibili import configure_bilibili_rooms
 
 from .history import prune_history
 from .hooks import HookRunner
@@ -120,7 +121,9 @@ class RecordingScheduler:
         if not self.enabled:
             return
         with self.database.session_factory() as session:
-            ids = set(session.scalars(select(LiveStreamer.id)).all())
+            streamers = session.execute(select(LiveStreamer.id, LiveStreamer.url)).all()
+            ids = {streamer_id for streamer_id, _url in streamers}
+            configure_bilibili_rooms(url for _streamer_id, url in streamers)
         for streamer_id in set(self.workers) - ids:
             await self.remove(streamer_id)
         new_ids = sorted(ids - set(self.workers))

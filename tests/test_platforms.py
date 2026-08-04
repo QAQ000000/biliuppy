@@ -1,6 +1,8 @@
 import asyncio
 import time
 
+import pytest
+
 import biliup.common.util
 from biliup.config import config
 from biliup.engine import StreamStatus
@@ -28,17 +30,28 @@ class FakeResponse:
         return None
 
 
+@pytest.fixture(autouse=True)
+def reset_bilibili_batch_state(monkeypatch):
+    bilibili_platform.BILIBILI_CONFIGURED_ROOM_IDS.clear()
+    bilibili_platform.BILIBILI_ROOM_STATUS_CACHE.clear()
+    bilibili_platform.BILIBILI_ROOM_STATUS_EXPIRES_AT = 0.0
+    monkeypatch.setattr(bilibili_platform, "BILIBILI_BATCH_WAIT_SECONDS", 0.0)
+
+
 async def test_bilibili_probe_distinguishes_api_failure_from_offline(monkeypatch) -> None:
     responses = [
         FakeResponse(payload={"code": -352, "message": "-352", "ttl": 1}),
         FakeResponse(payload={"code": -352, "message": "-352", "ttl": 1}),
-        FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}}),
+        FakeResponse(payload={"code": -352, "message": "-352", "ttl": 1}),
+        FakeResponse(
+            payload={"code": 0, "data": {"by_room_ids": {"123": {"live_status": 0}}}}
+        ),
     ]
 
     async def fake_get(_url, **_kwargs):
         return responses.pop(0)
 
-    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
     monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
     monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
     with config.overlay({"user": {}}):
@@ -55,7 +68,7 @@ async def test_bilibili_probe_treats_malformed_success_as_unknown(monkeypatch) -
     async def fake_get(_url, **_kwargs):
         return FakeResponse(payload={"code": 0, "data": {"room_info": {"live_status": 1}}})
 
-    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
     monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
     monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
     with config.overlay({"user": {}}):
@@ -74,7 +87,7 @@ async def test_bilibili_probe_uses_fallback_api_for_invalid_primary_response(mon
             return FakeResponse(payload={"code": 0, "data": {}})
         return FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}})
 
-    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
     monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
     monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
     with config.overlay(
@@ -93,20 +106,78 @@ async def test_bilibili_probe_uses_fallback_api_for_invalid_primary_response(mon
     ]
 
 
-async def test_bilibili_offline_room_init_skips_wbi_api(monkeypatch) -> None:
+async def test_bilibili_offline_batch_probe_skips_wbi_api(monkeypatch) -> None:
     calls: list[str] = []
+    request_headers: list[dict] = []
 
-    async def fake_get(url, **_kwargs):
+    async def fake_get(url, **kwargs):
         calls.append(url)
-        return FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}})
+        request_headers.append(kwargs.get("headers", {}))
+        return FakeResponse(
+            payload={"code": 0, "data": {"by_room_ids": {"123": {"live_status": 0}}}}
+        )
 
-    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
     monkeypatch.setattr(bilibili_platform.wbi, "last_update", 0)
-    with config.overlay({"user": {}}):
+    with config.overlay({"user": {"bili_cookie": "SESSDATA=secret"}}):
         result = await Bililive("demo", "https://live.bilibili.com/123").aprobe_stream(is_check=True)
 
     assert result.status is StreamStatus.OFFLINE
-    assert calls == ["https://api.live.bilibili.com/room/v1/Room/room_init"]
+    assert calls == [
+        "https://api.live.bilibili.com/xlive/web-room/v1/index/getRoomBaseInfo"
+    ]
+    assert all(key.lower() != "cookie" for key in request_headers[0])
+    assert request_headers[0]["user-agent"] == bilibili_platform.BILIBILI_USER_AGENT
+
+
+async def test_bilibili_batch_probe_reuses_all_configured_room_statuses(monkeypatch) -> None:
+    calls: list[list[tuple[str, str]]] = []
+
+    async def fake_get(_url, **kwargs):
+        calls.append(kwargs["params"])
+        return FakeResponse(
+            payload={
+                "code": 0,
+                "data": {
+                    "by_room_ids": {
+                        "123": {"live_status": 0},
+                        "456": {"live_status": 2},
+                    }
+                },
+            }
+        )
+
+    bilibili_platform.configure_bilibili_rooms(
+        ["https://live.bilibili.com/123", "https://live.bilibili.com/456"]
+    )
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
+
+    with config.overlay({"user": {}}):
+        first = await Bililive("first", "https://live.bilibili.com/123").aprobe_stream(is_check=True)
+        second = await Bililive("second", "https://live.bilibili.com/456").aprobe_stream(is_check=True)
+
+    assert first.status is StreamStatus.OFFLINE
+    assert second.status is StreamStatus.OFFLINE
+    assert len(calls) == 1
+    assert ("room_ids", "123") in calls[0]
+    assert ("room_ids", "456") in calls[0]
+
+
+async def test_bilibili_get_uses_requests_transport(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse(payload={"code": 0})
+
+    monkeypatch.setattr(bilibili_platform.BILIBILI_REQUEST_SESSION, "get", fake_get)
+    bilibili_platform.BILIBILI_REQUEST_SESSION.cookies.set("stale", "secret")
+
+    response = await bilibili_platform._bilibili_get("https://api.live.bilibili.com/test")
+
+    assert response.json() == {"code": 0}
+    assert calls == [("https://api.live.bilibili.com/test", {"timeout": 15})]
+    assert not bilibili_platform.BILIBILI_REQUEST_SESSION.cookies
 
 
 async def test_kuaishou_cookie_is_request_scoped(monkeypatch) -> None:

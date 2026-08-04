@@ -1,6 +1,9 @@
 import asyncio
 import json
 import time
+from collections.abc import Iterable
+
+import requests
 
 from biliup.common.util import client
 from biliup.config import config
@@ -14,7 +17,90 @@ from . import logger, match1, wbi
 OFFICIAL_API = "https://api.live.bilibili.com"
 STREAM_NAME_REGEXP = r"/live-bvc/\d+/(live_[^/\.]+)"
 WBI_WEB_LOCATION = "444.8"
+BILIBILI_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+)
+BILIBILI_REQUEST_SESSION = requests.Session()
+BILIBILI_REQUEST_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+BILIBILI_BATCH_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+BILIBILI_BATCH_WAIT_SECONDS = 1.0
+BILIBILI_BATCH_MIN_INTERVAL_SECONDS = 30.0
+BILIBILI_CONFIGURED_ROOM_IDS: set[str] = set()
+BILIBILI_ROOM_STATUS_CACHE: dict[str, dict] = {}
+BILIBILI_ROOM_STATUS_EXPIRES_AT = 0.0
 WBI_UPDATE_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+
+
+def get_bilibili_request_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    return BILIBILI_REQUEST_LOCKS.setdefault(loop, asyncio.Lock())
+
+
+def get_bilibili_batch_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    return BILIBILI_BATCH_LOCKS.setdefault(loop, asyncio.Lock())
+
+
+def configure_bilibili_rooms(urls: Iterable[str]) -> None:
+    global BILIBILI_CONFIGURED_ROOM_IDS, BILIBILI_ROOM_STATUS_EXPIRES_AT
+    room_ids = {
+        room_id for url in urls
+        if (room_id := match1(url, r'bilibili.com/(\d+)'))
+    }
+    if room_ids != BILIBILI_CONFIGURED_ROOM_IDS:
+        BILIBILI_CONFIGURED_ROOM_IDS = room_ids
+        BILIBILI_ROOM_STATUS_CACHE.clear()
+        BILIBILI_ROOM_STATUS_EXPIRES_AT = 0.0
+
+
+async def _bilibili_get(url: str, **kwargs):
+    """Reuse one serialized requests session to avoid Bilibili fingerprint blocks."""
+    kwargs.setdefault("timeout", 15)
+    async with get_bilibili_request_lock():
+        BILIBILI_REQUEST_SESSION.cookies.clear()
+        return await asyncio.to_thread(BILIBILI_REQUEST_SESSION.get, url, **kwargs)
+
+
+async def _get_bilibili_room_status(room_id: str) -> dict:
+    global BILIBILI_ROOM_STATUS_EXPIRES_AT
+    now = time.monotonic()
+    if now < BILIBILI_ROOM_STATUS_EXPIRES_AT and room_id in BILIBILI_ROOM_STATUS_CACHE:
+        return BILIBILI_ROOM_STATUS_CACHE[room_id]
+
+    async with get_bilibili_batch_lock():
+        now = time.monotonic()
+        if now < BILIBILI_ROOM_STATUS_EXPIRES_AT and room_id in BILIBILI_ROOM_STATUS_CACHE:
+            return BILIBILI_ROOM_STATUS_CACHE[room_id]
+
+        await asyncio.sleep(BILIBILI_BATCH_WAIT_SECONDS)
+        room_ids = sorted(BILIBILI_CONFIGURED_ROOM_IDS | {room_id})
+        params = [("room_ids", value) for value in room_ids]
+        params.append(("req_biz", "web_room_componet"))
+        response = await _bilibili_get(
+            f"{OFFICIAL_API}/xlive/web-room/v1/index/getRoomBaseInfo",
+            params=params,
+            headers={"user-agent": BILIBILI_USER_AGENT},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) and payload.get("code") == 0 else None
+        by_room_ids = data.get("by_room_ids") if isinstance(data, dict) else None
+        if not isinstance(by_room_ids, dict):
+            code = payload.get("code") if isinstance(payload, dict) else "invalid"
+            raise RuntimeError(f"Bilibili batch room API returned code {code}")
+
+        BILIBILI_ROOM_STATUS_CACHE.clear()
+        BILIBILI_ROOM_STATUS_CACHE.update({str(key): value for key, value in by_room_ids.items()})
+        interval = max(
+            BILIBILI_BATCH_MIN_INTERVAL_SECONDS,
+            float(config.get("event_loop_interval", 30) or 30),
+        )
+        BILIBILI_ROOM_STATUS_EXPIRES_AT = time.monotonic() + interval
+        room_status = BILIBILI_ROOM_STATUS_CACHE.get(room_id)
+        if not isinstance(room_status, dict) or "live_status" not in room_status:
+            raise RuntimeError(f"Bilibili batch room API omitted room {room_id}")
+        return room_status
 
 
 def get_wbi_update_lock() -> asyncio.Lock:
@@ -25,6 +111,7 @@ def get_wbi_update_lock() -> asyncio.Lock:
 class Bililive(DownloadBase):
     def __init__(self, fname, url, suffix='flv'):
         super().__init__(fname, url, suffix)
+        self.fake_headers['user-agent'] = BILIBILI_USER_AGENT
         self.live_start_time = 0
         self.bilibili_danmaku = config.get('bilibili_danmaku', False)
         self.bilibili_danmaku_detail = config.get('bilibili_danmaku_detail', False)
@@ -79,13 +166,28 @@ class Bililive(DownloadBase):
         self.fake_headers['referer'] = self.url
 
         # room_init 不需要 WBI 签名，优先用它过滤离线房间并解析短房间号。
+        anonymous_headers = {
+            key: value for key, value in self.fake_headers.items()
+            if key.lower() != "cookie"
+        }
         room_init_errors: list[str] = []
+        if OFFICIAL_API in self.bili_api_list:
+            try:
+                room_status = await _get_bilibili_room_status(room_id)
+            except Exception as exc:
+                room_init_errors.append(f"{OFFICIAL_API} batch: {exc}")
+            else:
+                if room_status["live_status"] != 1:
+                    logger.debug(f"{self.plugin_msg}: 未开播")
+                    self.raw_stream_url = None
+                    return StreamProbeResult.offline()
+
         for api in dict.fromkeys(self.bili_api_list):
             try:
-                response = await client.get(
+                response = await _bilibili_get(
                     f"{api}/room/v1/Room/room_init",
                     params={"id": room_id},
-                    headers=self.fake_headers,
+                    headers=anonymous_headers,
                 )
                 response.raise_for_status()
                 payload = response.json()
@@ -128,10 +230,10 @@ class Bililive(DownloadBase):
         }
         wbi.sign(params)
         room_info = None
-        probe_errors: list[str] = []
+        probe_errors = list(room_init_errors)
         for api in dict.fromkeys(self.bili_api_list):
             try:
-                response = await client.get(
+                response = await _bilibili_get(
                     f"{api}/xlive/web-room/v1/index/getInfoByRoom",
                     params=params,
                     headers=self.fake_headers,
@@ -289,7 +391,7 @@ class Bililive(DownloadBase):
                 'web_location': WBI_WEB_LOCATION,
             }
             wbi.sign(params)
-            api_res = await client.get(
+            api_res = await _bilibili_get(
                 full_url, params=params, headers=self.fake_headers
             )
             api_res = json.loads(api_res.text)
@@ -319,7 +421,7 @@ class Bililive(DownloadBase):
             "codec": "0,1",
         }
         try:
-            m3u8_res = await client.get(
+            m3u8_res = await _bilibili_get(
                 full_url, params=params, headers=self.fake_headers
             )
             if m3u8_res.status_code == 200 and m3u8_res.text.startswith("#EXTM3U"):
@@ -367,7 +469,7 @@ class Bililive(DownloadBase):
 
     async def get_user_status(self) -> dict:
         try:
-            nav_res = await client.get(
+            nav_res = await _bilibili_get(
                 'https://api.bilibili.com/x/web-interface/nav',
                 headers=self.fake_headers
             )
