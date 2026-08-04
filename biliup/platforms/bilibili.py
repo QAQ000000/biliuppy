@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 import time
 from collections.abc import Iterable
 
@@ -22,19 +23,23 @@ BILIBILI_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 )
 BILIBILI_REQUEST_SESSION = requests.Session()
-BILIBILI_REQUEST_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+BILIBILI_REQUEST_LOCK = threading.Lock()
 BILIBILI_BATCH_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
 BILIBILI_BATCH_WAIT_SECONDS = 1.0
 BILIBILI_BATCH_MIN_INTERVAL_SECONDS = 30.0
+BILIBILI_BATCH_FAILURE_BASE_SECONDS = 30.0
+BILIBILI_BATCH_FAILURE_MAX_SECONDS = 300.0
 BILIBILI_CONFIGURED_ROOM_IDS: set[str] = set()
-BILIBILI_ROOM_STATUS_CACHE: dict[str, dict] = {}
+BILIBILI_ROOM_STATUS_CACHE: dict[str, dict | None] = {}
 BILIBILI_ROOM_STATUS_EXPIRES_AT = 0.0
+BILIBILI_BATCH_FAILURE_REASON: str | None = None
+BILIBILI_BATCH_FAILURE_COUNT = 0
+BILIBILI_BATCH_RETRY_AT = 0.0
 WBI_UPDATE_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
 
 
-def get_bilibili_request_lock() -> asyncio.Lock:
-    loop = asyncio.get_running_loop()
-    return BILIBILI_REQUEST_LOCKS.setdefault(loop, asyncio.Lock())
+class BilibiliStatusUnavailable(RuntimeError):
+    pass
 
 
 def get_bilibili_batch_lock() -> asyncio.Lock:
@@ -44,6 +49,8 @@ def get_bilibili_batch_lock() -> asyncio.Lock:
 
 def configure_bilibili_rooms(urls: Iterable[str]) -> None:
     global BILIBILI_CONFIGURED_ROOM_IDS, BILIBILI_ROOM_STATUS_EXPIRES_AT
+    global BILIBILI_BATCH_FAILURE_REASON, BILIBILI_BATCH_FAILURE_COUNT
+    global BILIBILI_BATCH_RETRY_AT
     room_ids = {
         room_id for url in urls
         if (room_id := match1(url, r'bilibili.com/(\d+)'))
@@ -52,55 +59,114 @@ def configure_bilibili_rooms(urls: Iterable[str]) -> None:
         BILIBILI_CONFIGURED_ROOM_IDS = room_ids
         BILIBILI_ROOM_STATUS_CACHE.clear()
         BILIBILI_ROOM_STATUS_EXPIRES_AT = 0.0
+        BILIBILI_BATCH_FAILURE_REASON = None
+        BILIBILI_BATCH_FAILURE_COUNT = 0
+        BILIBILI_BATCH_RETRY_AT = 0.0
+
+
+def _parse_live_status(payload: object, context: str) -> int:
+    if not isinstance(payload, dict):
+        raise BilibiliStatusUnavailable(f"{context} returned an invalid room status")
+    value = payload.get("live_status")
+    if type(value) is not int or value not in {0, 1, 2}:
+        raise BilibiliStatusUnavailable(
+            f"{context} returned invalid live_status {value!r}"
+        )
+    return value
+
+
+def _cached_bilibili_room_status(room_id: str) -> dict:
+    room_status = BILIBILI_ROOM_STATUS_CACHE[room_id]
+    if room_status is None:
+        raise BilibiliStatusUnavailable(
+            f"Bilibili batch room API omitted room {room_id}"
+        )
+    _parse_live_status(room_status, f"Bilibili batch room {room_id}")
+    return room_status
 
 
 async def _bilibili_get(url: str, **kwargs):
     """Reuse one serialized requests session to avoid Bilibili fingerprint blocks."""
     kwargs.setdefault("timeout", 15)
-    async with get_bilibili_request_lock():
-        BILIBILI_REQUEST_SESSION.cookies.clear()
-        return await asyncio.to_thread(BILIBILI_REQUEST_SESSION.get, url, **kwargs)
+
+    def request():
+        # The lock must live inside the worker thread: cancelling to_thread does
+        # not stop an in-flight requests call.
+        with BILIBILI_REQUEST_LOCK:
+            BILIBILI_REQUEST_SESSION.cookies.clear()
+            return BILIBILI_REQUEST_SESSION.get(url, **kwargs)
+
+    return await asyncio.to_thread(request)
 
 
 async def _get_bilibili_room_status(room_id: str) -> dict:
-    global BILIBILI_ROOM_STATUS_EXPIRES_AT
+    global BILIBILI_ROOM_STATUS_EXPIRES_AT, BILIBILI_BATCH_FAILURE_REASON
+    global BILIBILI_BATCH_FAILURE_COUNT, BILIBILI_BATCH_RETRY_AT
     now = time.monotonic()
     if now < BILIBILI_ROOM_STATUS_EXPIRES_AT and room_id in BILIBILI_ROOM_STATUS_CACHE:
-        return BILIBILI_ROOM_STATUS_CACHE[room_id]
+        return _cached_bilibili_room_status(room_id)
+    if now < BILIBILI_BATCH_RETRY_AT and BILIBILI_BATCH_FAILURE_REASON:
+        raise BilibiliStatusUnavailable(BILIBILI_BATCH_FAILURE_REASON)
 
     async with get_bilibili_batch_lock():
         now = time.monotonic()
         if now < BILIBILI_ROOM_STATUS_EXPIRES_AT and room_id in BILIBILI_ROOM_STATUS_CACHE:
-            return BILIBILI_ROOM_STATUS_CACHE[room_id]
+            return _cached_bilibili_room_status(room_id)
+        if now < BILIBILI_BATCH_RETRY_AT and BILIBILI_BATCH_FAILURE_REASON:
+            raise BilibiliStatusUnavailable(BILIBILI_BATCH_FAILURE_REASON)
 
-        await asyncio.sleep(BILIBILI_BATCH_WAIT_SECONDS)
-        room_ids = sorted(BILIBILI_CONFIGURED_ROOM_IDS | {room_id})
-        params = [("room_ids", value) for value in room_ids]
-        params.append(("req_biz", "web_room_componet"))
-        response = await _bilibili_get(
-            f"{OFFICIAL_API}/xlive/web-room/v1/index/getRoomBaseInfo",
-            params=params,
-            headers={"user-agent": BILIBILI_USER_AGENT},
-        )
-        response.raise_for_status()
-        payload = response.json()
-        data = payload.get("data") if isinstance(payload, dict) and payload.get("code") == 0 else None
-        by_room_ids = data.get("by_room_ids") if isinstance(data, dict) else None
-        if not isinstance(by_room_ids, dict):
-            code = payload.get("code") if isinstance(payload, dict) else "invalid"
-            raise RuntimeError(f"Bilibili batch room API returned code {code}")
+        try:
+            await asyncio.sleep(BILIBILI_BATCH_WAIT_SECONDS)
+            room_ids = sorted(BILIBILI_CONFIGURED_ROOM_IDS | {room_id})
+            params = [("room_ids", value) for value in room_ids]
+            params.append(("req_biz", "web_room_componet"))
+            response = await _bilibili_get(
+                f"{OFFICIAL_API}/xlive/web-room/v1/index/getRoomBaseInfo",
+                params=params,
+                headers={"user-agent": BILIBILI_USER_AGENT},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            data = payload.get("data") if isinstance(payload, dict) and payload.get("code") == 0 else None
+            by_room_ids = data.get("by_room_ids") if isinstance(data, dict) else None
+            if not isinstance(by_room_ids, dict):
+                code = payload.get("code") if isinstance(payload, dict) else "invalid"
+                raise BilibiliStatusUnavailable(
+                    f"Bilibili batch room API returned code {code}"
+                )
+        except Exception as exc:
+            BILIBILI_BATCH_FAILURE_COUNT += 1
+            cooldown = min(
+                BILIBILI_BATCH_FAILURE_BASE_SECONDS
+                * (2 ** min(BILIBILI_BATCH_FAILURE_COUNT - 1, 4)),
+                BILIBILI_BATCH_FAILURE_MAX_SECONDS,
+            )
+            BILIBILI_BATCH_RETRY_AT = time.monotonic() + cooldown
+            BILIBILI_BATCH_FAILURE_REASON = (
+                f"Bilibili batch room API unavailable: {exc}; "
+                f"retrying in {cooldown:.0f}s"
+            )
+            raise BilibiliStatusUnavailable(BILIBILI_BATCH_FAILURE_REASON) from exc
 
         BILIBILI_ROOM_STATUS_CACHE.clear()
-        BILIBILI_ROOM_STATUS_CACHE.update({str(key): value for key, value in by_room_ids.items()})
+        for key, value in by_room_ids.items():
+            BILIBILI_ROOM_STATUS_CACHE[str(key)] = value
+            if isinstance(value, dict):
+                for alias_key in ("room_id", "short_id"):
+                    alias = value.get(alias_key)
+                    if alias not in {None, 0, "0"}:
+                        BILIBILI_ROOM_STATUS_CACHE[str(alias)] = value
+        for configured_room_id in room_ids:
+            BILIBILI_ROOM_STATUS_CACHE.setdefault(configured_room_id, None)
         interval = max(
             BILIBILI_BATCH_MIN_INTERVAL_SECONDS,
             float(config.get("event_loop_interval", 30) or 30),
         )
         BILIBILI_ROOM_STATUS_EXPIRES_AT = time.monotonic() + interval
-        room_status = BILIBILI_ROOM_STATUS_CACHE.get(room_id)
-        if not isinstance(room_status, dict) or "live_status" not in room_status:
-            raise RuntimeError(f"Bilibili batch room API omitted room {room_id}")
-        return room_status
+        BILIBILI_BATCH_FAILURE_REASON = None
+        BILIBILI_BATCH_FAILURE_COUNT = 0
+        BILIBILI_BATCH_RETRY_AT = 0.0
+        return _cached_bilibili_room_status(room_id)
 
 
 def get_wbi_update_lock() -> asyncio.Lock:
@@ -171,18 +237,22 @@ class Bililive(DownloadBase):
             if key.lower() != "cookie"
         }
         room_init_errors: list[str] = []
-        if OFFICIAL_API in self.bili_api_list:
+        room_init_apis = list(dict.fromkeys(self.bili_api_list))
+        if room_init_apis[0] == OFFICIAL_API:
             try:
                 room_status = await _get_bilibili_room_status(room_id)
             except Exception as exc:
                 room_init_errors.append(f"{OFFICIAL_API} batch: {exc}")
+                room_init_apis = [api for api in room_init_apis if api != OFFICIAL_API]
+                if not room_init_apis:
+                    return StreamProbeResult.unknown(room_init_errors[-1])
             else:
-                if room_status["live_status"] != 1:
+                if _parse_live_status(room_status, "Bilibili batch room") != 1:
                     logger.debug(f"{self.plugin_msg}: 未开播")
                     self.raw_stream_url = None
                     return StreamProbeResult.offline()
 
-        for api in dict.fromkeys(self.bili_api_list):
+        for api in room_init_apis:
             try:
                 response = await _bilibili_get(
                     f"{api}/room/v1/Room/room_init",
@@ -200,10 +270,12 @@ class Bililive(DownloadBase):
                 )
                 continue
             room_init = payload.get("data")
-            if not isinstance(room_init, dict) or "live_status" not in room_init:
-                room_init_errors.append(f"{api}: response did not contain a valid room status")
+            try:
+                live_status = _parse_live_status(room_init, f"{api} room_init")
+            except BilibiliStatusUnavailable as exc:
+                room_init_errors.append(str(exc))
                 continue
-            if room_init["live_status"] != 1:
+            if live_status != 1:
                 logger.debug(f"{self.plugin_msg}: 未开播")
                 self.raw_stream_url = None
                 return StreamProbeResult.offline()
@@ -244,6 +316,9 @@ class Bililive(DownloadBase):
                 probe_errors.append(f"{api}: {exc}")
                 logger.warning(f"{self.plugin_msg}: room API failed via {api}: {exc}")
                 continue
+            if not isinstance(payload, dict):
+                probe_errors.append(f"{api}: response was not an object")
+                continue
             if payload.get("code") != 0:
                 message = f"code {payload.get('code')}: {payload.get('message', '')}"
                 probe_errors.append(f"{api}: {message}")
@@ -252,10 +327,12 @@ class Bililive(DownloadBase):
             candidate = payload.get("data")
             room = candidate.get("room_info") if isinstance(candidate, dict) else None
             required_live_fields = {"cover", "title", "room_id", "uid", "live_start_time", "special_type"}
-            if not isinstance(room, dict) or "live_status" not in room:
-                probe_errors.append(f"{api}: response did not contain a valid room status")
+            try:
+                live_status = _parse_live_status(room, f"{api} room API")
+            except BilibiliStatusUnavailable as exc:
+                probe_errors.append(str(exc))
                 continue
-            if room["live_status"] == 1 and not required_live_fields.issubset(room):
+            if live_status == 1 and not required_live_fields.issubset(room):
                 probe_errors.append(f"{api}: live response is missing required room fields")
                 continue
             room_info = candidate
@@ -263,7 +340,7 @@ class Bililive(DownloadBase):
         if room_info is None:
             return StreamProbeResult.unknown("; ".join(probe_errors) or "Bilibili room API failed")
         room = room_info["room_info"]
-        if room['live_status'] != 1:
+        if _parse_live_status(room, "Bilibili room API") != 1:
             logger.debug(f"{self.plugin_msg}: 未开播")
             self.raw_stream_url = None
             return StreamProbeResult.offline()
