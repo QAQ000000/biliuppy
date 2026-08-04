@@ -2,10 +2,17 @@ import asyncio
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from biliup.services.recorder import FFmpegRecorder, RecorderSpec, RecorderStalledError, duration_seconds
+from biliup.services.recorder import (
+    FFmpegRecorder,
+    RecorderSpec,
+    RecorderStalledError,
+    RecorderStorageError,
+    duration_seconds,
+)
 
 
 def test_duration_seconds() -> None:
@@ -75,6 +82,63 @@ async def test_recorder_stall_watchdog_terminates_ffmpeg(tmp_path: Path, monkeyp
     )
 
     with pytest.raises(RecorderStalledError, match="did not grow"):
+        await recorder._run_process(["ffmpeg"])
+
+    assert process.terminated is True
+
+
+async def test_recorder_disk_guard_terminates_ffmpeg(tmp_path: Path, monkeypatch) -> None:
+    class NeverEndingOutput:
+        async def readline(self):
+            await asyncio.sleep(60)
+            return b""
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = NeverEndingOutput()
+            self.returncode = None
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = 1
+
+        def kill(self):
+            self.returncode = 1
+
+        async def wait(self):
+            while self.returncode is None:
+                await asyncio.sleep(0)
+            return self.returncode
+
+    process = FakeProcess()
+    disk_checks = 0
+
+    async def fake_create_subprocess_exec(*_command, **_kwargs):
+        return process
+
+    def fake_disk_usage(_path):
+        nonlocal disk_checks
+        disk_checks += 1
+        free = 2 * 1024**3 if disk_checks == 1 else 512 * 1024**2
+        return SimpleNamespace(total=10 * 1024**3, used=0, free=free)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("biliup.services.recorder.shutil.disk_usage", fake_disk_usage)
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+            stall_timeout=0.05,
+            min_free_bytes=1024**3,
+        )
+    )
+
+    with pytest.raises(RecorderStorageError, match="at least 1 GB"):
         await recorder._run_process(["ffmpeg"])
 
     assert process.terminated is True

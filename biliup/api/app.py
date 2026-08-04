@@ -18,7 +18,8 @@ from biliup.config import config
 from biliup.core import AppSettings
 from biliup.core.redaction import redact_sensitive_text
 from biliup.database import Database
-from biliup.services import BackgroundJobManager, RecordingScheduler
+from biliup.integrations.uploader import shutdown_upload_executor
+from biliup.services import BackgroundJobManager, HomeInstanceLock, RecordingScheduler
 from biliup.services.config_import import import_legacy_streamers
 
 from .context import AppContext, load_effective_config
@@ -136,39 +137,44 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        database.migrate()
-        effective_config = load_effective_config(database, app_settings, paths)
-        config.replace(effective_config)
-        import_legacy_streamers(database, effective_config)
-        scheduler = RecordingScheduler(
-            database,
-            paths,
-            config,
-            enabled=app_settings.scheduler_enabled,
-        )
-        jobs = BackgroundJobManager(database)
-        logging_handlers, log_handler = _configure_logging(
-            paths,
-            app_settings.log_level,
-            effective_config.log_file_max_size_mb,
-        )
-        app.state.context = AppContext(
-            app_settings,
-            paths,
-            database,
-            config,
-            scheduler,
-            jobs,
-            log_handler,
-        )
-        await scheduler.start()
-        try:
-            yield
-        finally:
-            await jobs.shutdown()
-            await scheduler.stop()
-            database.dispose()
-            _close_logging_handlers(logging_handlers)
+        with HomeInstanceLock(paths.home):
+            database.migrate()
+            effective_config = load_effective_config(database, app_settings, paths)
+            config.replace(effective_config)
+            import_legacy_streamers(database, effective_config)
+            scheduler = RecordingScheduler(
+                database,
+                paths,
+                config,
+                enabled=app_settings.scheduler_enabled,
+            )
+            jobs = BackgroundJobManager(
+                database,
+                active_limits={"upload": effective_config.manual_upload_queue_limit},
+            )
+            logging_handlers, log_handler = _configure_logging(
+                paths,
+                app_settings.log_level,
+                effective_config.log_file_max_size_mb,
+            )
+            app.state.context = AppContext(
+                app_settings,
+                paths,
+                database,
+                config,
+                scheduler,
+                jobs,
+                log_handler,
+            )
+            try:
+                await scheduler.start()
+                yield
+            finally:
+                await jobs.shutdown()
+                await scheduler.stop()
+                await shutdown_upload_executor()
+                database.dispose()
+                _close_logging_handlers(logging_handlers)
 
     app = FastAPI(title="biliup", version="1.1.7", lifespan=lifespan)
     app.add_middleware(AuthenticationMiddleware)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -27,6 +27,46 @@ class BackgroundJobRecord(Base):
     kind: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class UploadPartCache(Base):
+    __tablename__ = "uploadpartcache"
+    __table_args__ = (UniqueConstraint("file_hash", "file_size", "account_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    account_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class UploadAccountState(Base):
+    __tablename__ = "uploadaccountstate"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    last_submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class PendingSubmission(Base):
+    __tablename__ = "pendingsubmissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    aid: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    bvid: Mapped[str | None] = mapped_column(String)
+    account_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    cookie_path: Mapped[str] = mapped_column(String, nullable=False)
+    source_files: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
+    archive_state: Mapped[int | None] = mapped_column(Integer)
+    state_description: Mapped[str | None] = mapped_column(Text)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class UploadStreamer(Base):

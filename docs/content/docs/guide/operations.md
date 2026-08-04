@@ -18,6 +18,46 @@ top = false
 
 同一 `BILIUP_HOME` 只能运行一个 `biliup server` 进程。不要配置多个 Uvicorn/Gunicorn worker，也不要让多套 systemd 服务共用同一 HOME，否则会重复检测、录制和投稿。
 
+服务会使用 `$BILIUP_HOME/.biliup.lock` 阻止第二个实例启动。锁文件会长期存在，是否被占用由操作系统文件锁决定，不要通过删除锁文件强制启动第二个实例。
+
+Linux 生产环境可以使用单个 systemd 服务。以下路径、用户和端口应按实际部署修改：
+
+```ini
+[Unit]
+Description=biliuppy recording service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=biliup
+Group=biliup
+WorkingDirectory=/opt/biliuppy
+Environment=BILIUP_HOME=/var/lib/biliuppy
+ExecStart=/opt/biliuppy/.venv/bin/biliup server --host 0.0.0.0 --port 19159 --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=biliuppy
+
+[Install]
+WantedBy=multi-user.target
+```
+
+保存为 `/etc/systemd/system/biliuppy.service` 后运行：
+
+```shell
+sudo systemctl daemon-reload
+sudo systemctl enable --now biliuppy
+sudo systemctl status biliuppy
+journalctl -u biliuppy -f
+```
+
+systemd 默认按宿主机 journald 策略保存 stdout/stderr。可在 `/etc/systemd/journald.conf` 中设置 `SystemMaxUse`、`RuntimeMaxUse` 或 `MaxRetentionSec`，修改后重启 `systemd-journald`。这些限制作用于整个 journal，不是单个 biliuppy 服务。
+
 ## 任务状态
 
 常见录制状态：
@@ -40,6 +80,8 @@ top = false
 
 FFmpeg 存活但录像文件在 `recorder_stall_timeout` 秒内没有增长时，也会进入恢复流程。连续失败使用指数退避；达到 `recorder_retry_limit` 后进入至少 5 分钟的熔断冷却。熔断期间不会把仍在直播的场次送去投稿。
 
+`min_free_disk_gb` 控制下载目录所在磁盘必须保留的空间，默认 5 GB。空间不足时不会启动新录制；录制过程中低于阈值时会停止 FFmpeg、保留已有录像并显示 `Degraded`。设为 `0` 可关闭保护。
+
 ## 手动上传和线路切换
 
 1. 在全局设置或投稿模板中修改 `lines`、`threads`。
@@ -48,7 +90,11 @@ FFmpeg 存活但录像文件在 `recorder_stall_timeout` 秒内没有增长时�
 
 新任务使用保存后的配置，正在上传的任务继续使用启动时的配置。上传日志会记录协议、线路、分片数量、进度、平均速度和投稿结果。
 
+手动投稿最多选择 100 个文件，`threads` 范围为 1～8。活动任务总数由 `manual_upload_queue_limit` 控制；相同账号、文件和参数的活动任务会复用原任务 ID，避免重复点击造成重复投稿。
+
 最近 100 条手动上传任务状态保存在 SQLite 中，服务重启后仍可查询。重启时尚未完成的任务会标记为 `Cancelled`，系统不会自动重复投稿；应先确认 B 站稿件状态，再决定是否重新上传。
+
+自动投稿成功后，默认删除操作会等待 B 站审核状态确认。审核通过后删除录像和同名 XML；审核失败、查询异常或 24 小时内无法确认时保留源文件。待审核任务保存在 SQLite 中，服务重启后会继续检查。
 
 ## 日志管理
 
@@ -60,6 +106,12 @@ WebUI 的实时日志分为程序、录制和上传类别。日志文件位于 `
 - Cookie、访问令牌和上传签名会自动脱敏。
 
 清理日志不可恢复。需要排查故障时应先下载或备份日志。
+
+生产环境有三条相互独立的日志链路：
+
+- 应用日志写入 `biliup.log`，由 `log_file_max_size_mb` 和 5 个备份控制。
+- Uvicorn access log 默认关闭；使用 `--access-log` 启用后写入 stdout，不进入 `biliup.log`。
+- 进程 stdout/stderr 由运行环境管理：Docker Compose 使用 `local` 驱动并保留最多 3 个 10 MB 文件，systemd 使用 journald。应用内的日志大小设置不会限制这部分日志。
 
 ## 直播历史
 

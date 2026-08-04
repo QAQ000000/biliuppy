@@ -59,18 +59,56 @@ export default function Union() {
   const [visibleModal, setVisibleModal] = useState(false)
   const [selectFiles, setSelectFiles] = useState<(string | number)[]>([])
   const [selectEntity, setSelectEntity] = useState<StudioEntity>()
+  const [uploading, setUploading] = useState(false)
   const showDialog = (entity: StudioEntity) => {
     setSelectEntity(entity)
     setVisibleModal(true)
   }
   const handleOk = async () => {
-    await sendRequest('/v1/uploads', {
-      arg: {
-        files: selectFiles,
-        params: selectEntity,
-      },
-    })
-    setVisibleModal(false)
+    if (uploading || selectFiles.length === 0 || !selectEntity) return
+    setUploading(true)
+    try {
+      const accepted = await sendRequest<{ files: string[]; params: StudioEntity }>(
+        '/v1/uploads',
+        {
+          arg: {
+            files: selectFiles.map(String),
+            params: selectEntity,
+          },
+        },
+      ) as { task: string }
+      setVisibleModal(false)
+      Notification.info({
+        title: '投稿任务已提交',
+        position: 'top',
+        content: `任务 ${accepted.task}`,
+        duration: 3,
+      })
+
+      while (true) {
+        const job = await fetcher(`/v1/uploads/${accepted.task}`) as {
+          status: string
+          error?: string
+        }
+        if (job.status === 'Completed') {
+          Notification.success({ title: '投稿任务完成', position: 'top', duration: 3 })
+          break
+        }
+        if (job.status === 'Error' || job.status === 'Cancelled') {
+          throw new Error(job.error || `投稿任务状态：${job.status}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    } catch (uploadError) {
+      Notification.error({
+        title: '投稿任务失败',
+        position: 'top',
+        content: uploadError instanceof Error ? uploadError.message : String(uploadError),
+        duration: 5,
+      })
+    } finally {
+      setUploading(false)
+    }
   }
   const handleCancel = () => {
     setVisibleModal(false)
@@ -105,12 +143,14 @@ export default function Union() {
         style={{ width: 'min(600px, 90vw)' }}
         visible={visibleModal}
         onOk={handleOk}
+        confirmLoading={uploading}
+        okButtonProps={{ disabled: uploading || selectFiles.length === 0 }}
         afterClose={handleAfterClose}
         onCancel={handleCancel}
         bodyStyle={{
             overflow: 'auto',
         }}
-        closeOnEsc={true}
+        closeOnEsc={!uploading}
       >
         <Transfer
           style={{ height: 416 }}
@@ -226,7 +266,11 @@ export default function Union() {
                   }
                 />
                 <ButtonGroup style={{ minWidth: 100 }} theme="borderless">
-                  <Button icon={<IconSendStroked />} onClick={() => showDialog(item)}></Button>
+                  <Button
+                    icon={<IconSendStroked />}
+                    disabled={uploading}
+                    onClick={() => showDialog(item)}
+                  ></Button>
                   <Button
                     icon={<IconEdit2Stroked />}
                     onClick={() => {

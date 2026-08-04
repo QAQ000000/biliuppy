@@ -22,11 +22,11 @@ def get_configuration(context: AppContext = Depends(get_context)) -> dict:
 
 @router.put("/v1/configuration")
 async def put_configuration(
-    payload: dict,
+    payload: RecordingConfig,
     session: Session = Depends(get_session),
     context: AppContext = Depends(get_context),
 ) -> dict:
-    validated = RecordingConfig.model_validate(payload)
+    validated = payload
     rows = list(session.scalars(select(Configuration).where(Configuration.key == "config")))
     if len(rows) > 1:
         raise HTTPException(409, "有多个空间配置同时存在 (key='config')")
@@ -37,5 +37,6 @@ async def put_configuration(
         session.add(Configuration(key="config", value=value))
     session.commit()
     context.config.replace(validated)
+    context.jobs.active_limits["upload"] = validated.manual_upload_queue_limit
     context.log_handler.maxBytes = validated.log_file_max_size_mb * 1024 * 1024
     return json.loads(value)

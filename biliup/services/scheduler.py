@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import random
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,12 +24,15 @@ from biliup.core import AppPaths
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo, UploadStreamer
 from biliup.database.session import Database
 from biliup.engine import Plugin, StreamProbeResult, StreamStatus
+from biliup.integrations.upload_errors import is_transient_upload_error
+from biliup.integrations.upload_state import UploadResult
 from biliup.integrations.uploader import upload_files
 from biliup.platforms.bilibili import configure_bilibili_rooms
 
 from .history import prune_history
 from .hooks import HookRunner
-from .recorder import FFmpegRecorder, RecorderError, RecorderSpec
+from .recorder import FFmpegRecorder, RecorderError, RecorderSpec, RecorderStorageError
+from .submission_review import SubmissionReviewService
 
 logger = logging.getLogger("biliup.scheduler")
 
@@ -94,8 +98,10 @@ class RecordingScheduler:
         self.upload_semaphore = asyncio.Semaphore(max(1, int(config.get("pool2_size", 3) or 3)))
         self.segment_semaphore = asyncio.Semaphore(max(1, int(config.get("segment_processor_concurrency", 4) or 4)))
         self.checker_semaphore = asyncio.Semaphore(max(1, int(config.get("checker_concurrency", 3) or 3)))
+        self.submission_reviews = SubmissionReviewService(database, paths)
 
     async def start(self) -> None:
+        await self.submission_reviews.start()
         if not self.enabled:
             return
         if not self._plugins_loaded:
@@ -107,14 +113,21 @@ class RecordingScheduler:
     async def stop(self) -> None:
         self._closing = True
         states = list(self.workers.values())
+        logger.info("Stopping scheduler with %s worker(s)", len(states))
+        recording_tasks = []
+        monitor_tasks = []
         for state in states:
+            if state.recording_task and not state.recording_task.done():
+                state.recording_task.cancel()
+                recording_tasks.append(state.recording_task)
+            if state.task and not state.task.done():
+                state.task.cancel()
+                monitor_tasks.append(state.task)
             if state.recorder:
                 await state.recorder.stop()
-            if state.recording_task:
-                state.recording_task.cancel()
-            if state.task:
-                state.task.cancel()
-        await asyncio.gather(*(state.task for state in states if state.task), return_exceptions=True)
+        await asyncio.gather(*recording_tasks, *monitor_tasks, return_exceptions=True)
+        await self.submission_reviews.stop()
+        logger.info("Scheduler stopped")
         self.workers.clear()
 
     async def reload(self) -> None:
@@ -274,7 +287,23 @@ class RecordingScheduler:
         state.status = "Waiting"
         if state.paused or self._closing:
             return
+        if error := self._disk_space_error():
+            state.status = "Degraded"
+            state.error = error
+            logger.error("Recording blocked for %s: %s", payload["remark"], error)
+            await asyncio.sleep(max(1.0, float(self.config.get("event_loop_interval", 30) or 30)))
+            return
         await self._record_active(state, payload, checker)
+
+    def _disk_space_error(self) -> str | None:
+        required_gb = max(0, int(self.config.get("min_free_disk_gb", 5) or 0))
+        if not required_gb:
+            return None
+        free_bytes = shutil.disk_usage(self.paths.downloads).free
+        required_bytes = required_gb * 1024**3
+        if free_bytes >= required_bytes:
+            return None
+        return f"Free disk space is {free_bytes / 1024**3:.2f} GB; at least {required_gb:g} GB is required"
 
     async def _record_active(self, state: WorkerState, payload: dict[str, Any], checker: Any) -> None:
         now = datetime.now()
@@ -302,12 +331,14 @@ class RecordingScheduler:
             filename_prefix=payload["filename_prefix"] or self.config.get("filename_prefix"),
             extra_args=payload["opt_args"] or [],
             stall_timeout=self.config.get("recorder_stall_timeout", 90),
+            min_free_bytes=max(0, int(self.config.get("min_free_disk_gb", 5) or 0)) * 1024**3,
         )
         files: list[Path] = []
         seen_files: set[Path] = set()
         recorder_failures = 0
         segment_tasks: set[asyncio.Task[None]] = set()
         segment_error: BaseException | None = None
+        storage_error: RecorderStorageError | None = None
         threshold = int(override.get("filtering_threshold", self.config.get("filtering_threshold", 20)) or 0)
         parallel = bool(
             override.get("segment_processor_parallel", self.config.get("segment_processor_parallel", False))
@@ -371,6 +402,13 @@ class RecordingScheduler:
                             state.status = "Downloading"
                             state.error = None
                             await recorder.run(segment_ready)
+                    except RecorderStorageError as exc:
+                        storage_error = exc
+                        for file in recorder.output_files():
+                            await segment_ready(file)
+                        state.status = "Degraded"
+                        state.error = str(exc)
+                        logger.error("Recording stopped for %s: %s", payload["remark"], exc)
                     except RecorderError as exc:
                         recorder_error = exc
                         if self._clock() - run_started >= 60:
@@ -387,6 +425,8 @@ class RecordingScheduler:
                         state.recorder = None
 
                     if state.paused or self._closing:
+                        break
+                    if storage_error:
                         break
                     if not await self._wait_for_stream_recovery(state, checker):
                         if recorder_error:
@@ -447,7 +487,12 @@ class RecordingScheduler:
             state.status = "Paused" if state.paused else state.status
             return
         if not files:
-            state.status = "Idle"
+            if error := self._disk_space_error():
+                state.status = "Degraded"
+                state.error = error
+            else:
+                state.status = "Idle"
+                state.error = None
             return
 
         with self.database.session_factory.begin() as session:
@@ -469,15 +514,30 @@ class RecordingScheduler:
                 logger.info("Pruned %s old live history records", removed_records)
         context.update({"end_time": int(datetime.now().timestamp()), "file_list": [str(file) for file in files]})
         await self.hooks.run_commands(payload["downloaded_processor"], context)
-        upload_succeeded: bool | None = None
+        upload_result: UploadResult | None = None
+        upload_attempted = bool(payload["upload_streamers_id"] and files)
         if payload["upload_streamers_id"] and files:
-            upload_succeeded = await self._upload(state, payload, context, files)
-        if files and (upload_succeeded is True or (upload_succeeded is None and payload["postprocessor"])):
+            upload_result = await self._upload(state, payload, context, files)
+        if upload_result is not None:
             steps = payload["postprocessor"]
-            if upload_succeeded is True and steps is None:
-                steps = ["rm"]
-            await self.hooks.run_postprocessors(steps, files, context)
-        state.status = "Idle"
+            if upload_result.account_key == "noop":
+                await self.hooks.run_postprocessors(steps or ["rm"], files, context)
+            else:
+                configured_steps = list(steps or [])
+                immediate_steps = [step for step in configured_steps if HookRunner._normalize(step)[0] != "rm"]
+                await self.hooks.run_postprocessors(immediate_steps, files, context)
+                delete_after_review = steps is None or len(immediate_steps) != len(configured_steps)
+                if delete_after_review:
+                    self.submission_reviews.enqueue(upload_result, files)
+        elif not upload_attempted and files and payload["postprocessor"]:
+            await self.hooks.run_postprocessors(payload["postprocessor"], files, context)
+        if error := self._disk_space_error():
+            state.status = "Degraded"
+            state.error = error
+        else:
+            state.status = "Idle"
+            if state.upload_status != "Error":
+                state.error = None
 
     async def _wait_for_stream_recovery(self, state: WorkerState, checker: Any) -> bool:
         grace = max(0.0, float(self.config.get("delay", 300) or 0))
@@ -543,7 +603,7 @@ class RecordingScheduler:
         payload: dict[str, Any],
         context: dict[str, Any],
         files: list,
-    ) -> bool:
+    ) -> UploadResult | None:
         with self.database.session_factory() as session:
             template = session.get(UploadStreamer, payload["upload_streamers_id"])
             if template is None:
@@ -553,7 +613,12 @@ class RecordingScheduler:
             params = {column.name: getattr(template, column.name) for column in template.__table__.columns}
         for key in ("submit_api", "lines", "threads"):
             params[key] = payload["override"].get(key, self.config.get(key))
+        params["submit_interval"] = payload["override"].get(
+            "submit_interval",
+            self.config.get("submit_interval", 60),
+        )
         params["user"] = payload["override"].get("user", self.config.get("user", {}))
+        params["_database"] = self.database
         params["source_url"] = context["url"]
         delay = int(self.config.get("upload_delay", 0) or 0)
         if delay:
@@ -568,17 +633,21 @@ class RecordingScheduler:
             state.upload_status = "Uploading"
             try:
                 async with self.upload_semaphore:
-                    await upload_files([str(file) for file in files], params, self.paths)
+                    result = await upload_files([str(file) for file in files], params, self.paths)
                 state.upload_status = "Idle"
                 state.error = None
-                return True
+                return result
             except Exception as exc:
                 state.upload_status = "Error"
                 state.error = str(exc)
                 logger.exception("Upload attempt %s/%s failed for streamer %s", attempt, limit, state.streamer_id)
+                retryable = is_transient_upload_error(exc)
+                if not retryable:
+                    logger.error("Upload error is not retryable; stopping further attempts")
+                    break
                 if attempt < limit:
                     await asyncio.sleep(min(2**attempt, 30))
-        return False
+        return None
 
     @staticmethod
     def _format_text(template: str, context: dict[str, Any]) -> str:

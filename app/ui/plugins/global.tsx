@@ -85,6 +85,22 @@ const Global: React.FC = () => {
           }}
           showClear={false}
         />
+        <Form.InputNumber
+          field="min_free_disk_gb"
+          label="最低剩余磁盘空间（min_free_disk_gb）"
+          extraText="下载目录所在磁盘低于此值时停止新录制，录制中也会自动停止。设为 0 可关闭。"
+          placeholder={5}
+          suffix="GB"
+          min={0}
+          max={10240}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
       </div>
 
       <Space />
@@ -427,6 +443,9 @@ const Global: React.FC = () => {
             padding: 0,
           }}
           showClear={true}
+          min={1}
+          max={8}
+          precision={0}
         />
         <Form.InputNumber
           field="max_upload_limit"
@@ -441,6 +460,21 @@ const Global: React.FC = () => {
           showClear={true}
         />
         <Form.InputNumber
+          field="manual_upload_queue_limit"
+          placeholder={8}
+          extraText="手动投稿中正在运行和排队的任务总数上限；达到上限后新任务会被拒绝。"
+          label="手动投稿任务上限（manual_upload_queue_limit）"
+          min={1}
+          max={100}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Form.InputNumber
           field="upload_delay"
           placeholder={0}
           extraText="确认下播后、开始投稿前额外等待的时间。通常保持为 0。"
@@ -448,6 +482,23 @@ const Global: React.FC = () => {
           suffix="s"
           min={0}
           max={86400}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+
+        <Form.InputNumber
+          field="submit_interval"
+          placeholder={60}
+          extraText="同一账号两次最终投稿之间的最短间隔；分P上传不受影响。"
+          label="账号投稿间隔（submit_interval）"
+          suffix="s"
+          min={0}
+          max={3600}
           precision={0}
           style={{ width: '100%' }}
           fieldStyle={{

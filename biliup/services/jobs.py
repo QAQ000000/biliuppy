@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 from uuid import uuid4
@@ -15,6 +15,14 @@ from biliup.database.models import BackgroundJobRecord
 from biliup.database.session import Database
 
 logger = logging.getLogger("biliup.jobs")
+
+
+class JobCapacityError(RuntimeError):
+    pass
+
+
+class JobAdmissionClosedError(RuntimeError):
+    pass
 
 
 @dataclass(slots=True)
@@ -32,25 +40,76 @@ class BackgroundJobManager:
     TERMINAL_STATUSES = {"Completed", "Error", "Cancelled"}
     ACTIVE_STATUSES = {"Pending", "Running"}
 
-    def __init__(self, database: Database | None = None, *, max_completed: int = 100) -> None:
+    def __init__(
+        self,
+        database: Database | None = None,
+        *,
+        max_completed: int = 100,
+        active_limits: Mapping[str, int] | None = None,
+    ) -> None:
         self.database = database
         self.jobs: dict[str, BackgroundJob] = {}
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.max_completed = max(0, max_completed)
+        self.active_limits = {
+            kind: max(1, int(limit)) for kind, limit in (active_limits or {}).items()
+        }
+        self._accepting = True
+        self._active_keys: dict[tuple[str, str], str] = {}
+        self._job_keys: dict[str, tuple[str, str]] = {}
         if self.database is not None:
             self._restore_persisted()
 
-    def submit(self, kind: str, operation: Coroutine[Any, Any, None]) -> BackgroundJob:
+    def submit(
+        self,
+        kind: str,
+        operation_factory: Callable[[], Awaitable[Any]],
+        *,
+        idempotency_key: str | None = None,
+    ) -> BackgroundJob:
+        if not self._accepting:
+            raise JobAdmissionClosedError("Background jobs are shutting down")
+        key = (kind, idempotency_key) if idempotency_key else None
+        if key is not None:
+            existing_id = self._active_keys.get(key)
+            existing = self.jobs.get(existing_id) if existing_id else None
+            if existing is not None and existing.status in self.ACTIVE_STATUSES:
+                return existing
+            self._active_keys.pop(key, None)
+
+        limit = self.active_limits.get(kind)
+        if limit is not None:
+            active_count = sum(
+                job.kind == kind and job.status in self.ACTIVE_STATUSES
+                for job in self.jobs.values()
+            )
+            if active_count >= limit:
+                raise JobCapacityError(f"Too many active {kind} jobs (limit: {limit})")
+
         job = BackgroundJob(id=uuid4().hex, kind=kind)
         self.jobs[job.id] = job
+        if key is not None:
+            self._active_keys[key] = job.id
+            self._job_keys[job.id] = key
         self._save(job)
-        task = asyncio.create_task(self._run(job, operation), name=f"{kind}-{job.id}")
+        task = asyncio.create_task(
+            self._run(job, operation_factory),
+            name=f"{kind}-{job.id}",
+        )
         self.tasks[job.id] = task
-        task.add_done_callback(lambda _task, job_id=job.id: self._task_done(job_id))
+        task.add_done_callback(
+            lambda completed_task, job_id=job.id: self._task_done(job_id, completed_task)
+        )
         return job
 
-    def _task_done(self, job_id: str) -> None:
+    def _task_done(self, job_id: str, task: asyncio.Task[None]) -> None:
         self.tasks.pop(job_id, None)
+        job = self.jobs.get(job_id)
+        if task.cancelled() and job is not None and job.status in self.ACTIVE_STATUSES:
+            job.status = "Cancelled"
+            job.error = "Application shutdown interrupted the job"
+            self._save(job)
+        self._release_key(job_id)
         terminal_ids = [
             current_id
             for current_id, current_job in self.jobs.items()
@@ -60,13 +119,22 @@ class BackgroundJobManager:
             self.jobs.pop(current_id, None)
         self._prune_persisted()
 
-    async def _run(self, job: BackgroundJob, operation: Coroutine[Any, Any, None]) -> None:
+    def _release_key(self, job_id: str) -> None:
+        key = self._job_keys.pop(job_id, None)
+        if key is not None and self._active_keys.get(key) == job_id:
+            self._active_keys.pop(key, None)
+
+    async def _run(
+        self,
+        job: BackgroundJob,
+        operation_factory: Callable[[], Awaitable[Any]],
+    ) -> None:
         job.status = "Running"
         self._save(job)
         started_at = time.perf_counter()
         logger.info("Background %s job %s started", job.kind, job.id)
         try:
-            await operation
+            await operation_factory()
         except asyncio.CancelledError:
             job.status = "Cancelled"
             job.error = "Application shutdown interrupted the job"
@@ -92,6 +160,8 @@ class BackgroundJobManager:
                 job.id,
                 time.perf_counter() - started_at,
             )
+        finally:
+            self._release_key(job.id)
 
     def get(self, job_id: str) -> BackgroundJob | None:
         job = self.jobs.get(job_id)
@@ -166,6 +236,7 @@ class BackgroundJobManager:
             session.commit()
 
     async def shutdown(self) -> None:
+        self._accepting = False
         tasks = list(self.tasks.values())
         for task in tasks:
             task.cancel()

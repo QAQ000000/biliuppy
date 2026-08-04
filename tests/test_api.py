@@ -1,10 +1,13 @@
+import asyncio
 import json
 import logging
 import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 
+import pytest
 from fastapi.testclient import TestClient
 
 from biliup.api import create_app
@@ -13,6 +16,7 @@ from biliup.api.routers.logs import TAIL_MAX_BYTES, filter_log_lines, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
 from biliup.database.models import Configuration, FileItem, StreamerInfo
+from biliup.services import HomeInstanceLockError
 
 
 def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
@@ -23,6 +27,17 @@ def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
         session_secret="test-session-secret",
     )
     return TestClient(create_app(settings))
+
+
+def test_same_home_allows_only_one_running_server(tmp_path: Path) -> None:
+    with make_client(tmp_path) as first:
+        assert first.get("/healthz").status_code == 200
+        with pytest.raises(HomeInstanceLockError, match="already using BILIUP_HOME"):
+            with make_client(tmp_path):
+                pass
+
+    with make_client(tmp_path) as restarted:
+        assert restarted.get("/healthz").status_code == 200
 
 
 def test_log_redaction_hides_credentials_and_signatures() -> None:
@@ -66,6 +81,7 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert initial_config["downloader"] == "ffmpeg"
         assert initial_config["log_file_max_size_mb"] == 10
         assert initial_config["history_max_records"] == 10_000
+        assert initial_config["min_free_disk_gb"] == 5
 
         initial_config["log_file_max_size_mb"] = 25
         updated_config = client.put("/v1/configuration", json=initial_config)
@@ -133,6 +149,76 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
 
     with make_client(tmp_path) as restarted_client:
         assert restarted_client.get(f"/v1/uploads/{task_id}").json() == job
+
+
+def test_manual_upload_deduplicates_active_jobs_and_rejects_over_capacity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    started = Event()
+    release = Event()
+    calls = 0
+
+    async def blocking_upload(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        started.set()
+        await asyncio.to_thread(release.wait)
+
+    monkeypatch.setattr("biliup.api.routers.uploads.upload_files", blocking_upload)
+    with make_client(tmp_path) as client:
+        client.app.state.context.jobs.active_limits["upload"] = 1
+        for name in ("first.mp4", "second.mp4"):
+            (tmp_path / "downloads" / name).write_bytes(name.encode("ascii"))
+        payload = {
+            "files": ["first.mp4"],
+            "params": {"template_name": "manual", "uploader": "Noop"},
+        }
+        first = client.post("/v1/uploads", json=payload)
+        assert started.wait(1)
+        duplicate = client.post("/v1/uploads", json=payload)
+        over_capacity = client.post(
+            "/v1/uploads",
+            json={**payload, "files": ["second.mp4"]},
+        )
+
+        assert first.status_code == 200
+        assert duplicate.status_code == 200
+        assert duplicate.json()["task"] == first.json()["task"]
+        assert over_capacity.status_code == 429
+        assert calls == 1
+
+        release.set()
+        task_id = first.json()["task"]
+        for _ in range(100):
+            if client.get(f"/v1/uploads/{task_id}").json()["status"] == "Completed":
+                break
+            time.sleep(0.01)
+        resubmitted = client.post("/v1/uploads", json=payload)
+        assert resubmitted.status_code == 200
+        assert resubmitted.json()["task"] != task_id
+
+
+def test_manual_upload_request_limits_are_enforced(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        empty = client.post(
+            "/v1/uploads",
+            json={"files": [], "params": {"template_name": "manual"}},
+        )
+        too_many = client.post(
+            "/v1/uploads",
+            json={
+                "files": [f"video-{index}.mp4" for index in range(101)],
+                "params": {"template_name": "manual"},
+            },
+        )
+        config = client.get("/v1/configuration").json()
+        config["threads"] = 9
+        invalid_threads = client.put("/v1/configuration", json=config)
+
+    assert empty.status_code == 422
+    assert too_many.status_code == 422
+    assert invalid_threads.status_code == 422
 
 
 def test_frontend_serves_exported_rsc_paths_and_head(tmp_path: Path, monkeypatch) -> None:

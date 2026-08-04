@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from biliup.database.models import UploadStreamer
-from biliup.integrations.uploader import upload_files
+from biliup.integrations.uploader import upload_files, upload_idempotency_key
+from biliup.services import JobAdmissionClosedError, JobCapacityError
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session
@@ -57,13 +58,22 @@ def delete_template(template_id: int, session: Session = Depends(get_session)) -
 @router.post("/v1/uploads")
 async def manual_upload(payload: ManualUploadInput, context: AppContext = Depends(get_context)) -> dict:
     params = payload.params.model_dump()
-    for key in ("submit_api", "lines", "threads"):
+    for key in ("submit_api", "lines", "threads", "submit_interval"):
         params[key] = context.config.get(key)
     params["user"] = context.config.get("user", {})
-    job = context.jobs.submit(
-        "upload",
-        upload_files(payload.files, params, context.paths),
-    )
+    try:
+        idempotency_key = upload_idempotency_key(payload.files, params, context.paths)
+        job = context.jobs.submit(
+            "upload",
+            lambda: upload_files(payload.files, params, context.paths, context.database),
+            idempotency_key=idempotency_key,
+        )
+    except JobCapacityError as exc:
+        raise HTTPException(429, str(exc)) from exc
+    except JobAdmissionClosedError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
     return {"accepted": True, "task": job.id}
 
 

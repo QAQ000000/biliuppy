@@ -69,7 +69,7 @@ class Credentials(BaseModel):
 
 
 class ManualUploadInput(BaseModel):
-    files: list[str]
+    files: list[str] = Field(min_length=1, max_length=100)
     params: UploadStreamerInput
 
 

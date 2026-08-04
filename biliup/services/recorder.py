@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import shutil
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -25,6 +26,15 @@ class RecorderStalledError(RecorderError):
     def __init__(self, timeout: float):
         self.timeout = timeout
         super().__init__(f"FFmpeg output did not grow for {timeout:g} seconds")
+
+
+class RecorderStorageError(RecorderError):
+    def __init__(self, free_bytes: int, required_bytes: int):
+        self.free_bytes = free_bytes
+        self.required_bytes = required_bytes
+        free_gb = free_bytes / 1024**3
+        required_gb = required_bytes / 1024**3
+        super().__init__(f"Free disk space is {free_gb:.2f} GB; at least {required_gb:g} GB is required")
 
 
 def duration_seconds(value: str | int | None) -> int | None:
@@ -58,6 +68,7 @@ class RecorderSpec:
     filename_prefix: str | None = None
     extra_args: list[str] | None = None
     stall_timeout: float | None = 90
+    min_free_bytes: int = 0
 
 
 SegmentCallback = Callable[[Path], Awaitable[None]]
@@ -134,6 +145,7 @@ class FFmpegRecorder:
         callback: SegmentCallback | None = None,
         notified: set[Path] | None = None,
     ) -> int:
+        self._check_free_space()
         self.process = await asyncio.create_subprocess_exec(
             *command,
             stdin=asyncio.subprocess.DEVNULL,
@@ -142,7 +154,10 @@ class FFmpegRecorder:
         )
         assert self.process.stdout is not None
         stall_timeout = max(0.0, float(self.spec.stall_timeout or 0))
-        progress_interval = min(5.0, max(0.1, stall_timeout / 3)) if stall_timeout else None
+        monitor_enabled = bool(stall_timeout or self.spec.min_free_bytes)
+        progress_interval = min(5.0, max(0.1, stall_timeout / 3)) if stall_timeout else 5.0
+        if not monitor_enabled:
+            progress_interval = None
         last_size = self._output_size()
         last_progress = time.monotonic()
         last_checked = last_progress
@@ -173,6 +188,7 @@ class FFmpegRecorder:
 
                 now = time.monotonic()
                 if progress_interval is not None and now - last_checked >= progress_interval:
+                    self._check_free_space()
                     current_size = self._output_size()
                     if current_size != last_size:
                         last_size = current_size
@@ -195,6 +211,14 @@ class FFmpegRecorder:
         except BaseException:
             await self.stop()
             raise
+
+    def _check_free_space(self) -> None:
+        required = max(0, int(self.spec.min_free_bytes or 0))
+        if not required:
+            return
+        free = shutil.disk_usage(self.spec.output_dir).free
+        if free < required:
+            raise RecorderStorageError(free, required)
 
     def _output_size(self) -> int:
         total = 0

@@ -3,22 +3,25 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from requests import ConnectionError as RequestsConnectionError
 from sqlalchemy import select
 
 from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database import Database
-from biliup.database.models import BackgroundJobRecord, FileItem, StreamerInfo, UploadStreamer
+from biliup.database.models import BackgroundJobRecord, FileItem, PendingSubmission, StreamerInfo, UploadStreamer
 from biliup.engine import StreamProbeResult
 from biliup.integrations import bilibili as bili_service
+from biliup.integrations.upload_state import UploadResult
 from biliup.integrations.uploader import upload_files
 from biliup.services.history import prune_history
 from biliup.services.hooks import HookRunner
 from biliup.services.jobs import BackgroundJobManager
-from biliup.services.recorder import RecorderProcessError
+from biliup.services.recorder import RecorderProcessError, RecorderStorageError
 from biliup.services.scheduler import RecordingScheduler, WorkerState, recording_allowed
 
 
@@ -172,7 +175,7 @@ async def test_scheduler_retries_upload_and_keeps_files_after_final_failure(tmp_
 
     async def failing_upload(_files, params, _paths):
         attempts.append(params)
-        raise RuntimeError("upload unavailable")
+        raise RequestsConnectionError("upload unavailable")
 
     async def immediate_sleep(_delay):
         return None
@@ -240,6 +243,86 @@ async def test_scheduler_retries_upload_and_keeps_files_after_final_failure(tmp_
     database.dispose()
 
 
+async def test_scheduler_blocks_new_recording_when_disk_space_is_low(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"min_free_disk_gb": 5, "event_loop_interval": 1}),
+        enabled=False,
+    )
+    state = WorkerState(streamer_id=7)
+    recording_started = False
+
+    async def should_not_record(*_args):
+        nonlocal recording_started
+        recording_started = True
+
+    async def immediate_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(
+        "biliup.services.scheduler.shutil.disk_usage",
+        lambda _path: SimpleNamespace(total=10 * 1024**3, used=9 * 1024**3, free=1024**3),
+    )
+    monkeypatch.setattr(scheduler, "_record_active", should_not_record)
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", immediate_sleep)
+
+    await scheduler._record(state, scheduler_payload(), SchedulerChecker())
+
+    assert recording_started is False
+    assert state.status == "Degraded"
+    assert state.error == "Free disk space is 1.00 GB; at least 5 GB is required"
+    database.dispose()
+
+
+async def test_scheduler_keeps_partial_recording_when_disk_becomes_low(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"filtering_threshold": 0, "min_free_disk_gb": 5}),
+        enabled=False,
+    )
+
+    class LowDiskRecorder:
+        def __init__(self, spec):
+            self.file = spec.output_dir / "partial.mp4"
+
+        def prepare_stem(self):
+            return "partial"
+
+        async def run(self, _callback):
+            self.file.write_bytes(b"partial")
+            raise RecorderStorageError(1024**3, 5 * 1024**3)
+
+        def output_files(self):
+            return [self.file]
+
+        async def stop(self):
+            return None
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", LowDiskRecorder)
+    monkeypatch.setattr(
+        "biliup.services.scheduler.shutil.disk_usage",
+        lambda _path: SimpleNamespace(total=10 * 1024**3, used=9 * 1024**3, free=1024**3),
+    )
+    state = WorkerState(streamer_id=7)
+
+    await scheduler._record_active(state, scheduler_payload(), SchedulerChecker())
+
+    assert state.status == "Degraded"
+    assert state.error == "Free disk space is 1.00 GB; at least 5 GB is required"
+    assert (paths.downloads / "partial.mp4").read_bytes() == b"partial"
+    with database.session_factory() as session:
+        assert session.query(StreamerInfo).count() == 1
+        assert session.query(FileItem).count() == 1
+    database.dispose()
+
+
 async def test_scheduler_clears_transient_upload_error_after_retry_success(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)
@@ -261,7 +344,8 @@ async def test_scheduler_clears_transient_upload_error_after_retry_success(tmp_p
         nonlocal attempts
         attempts += 1
         if attempts < 3:
-            raise RuntimeError("temporary failure")
+            raise RequestsConnectionError("temporary failure")
+        return UploadResult(123, "BV123", "mid:1", "cookies.json")
 
     async def immediate_sleep(_delay):
         return None
@@ -274,7 +358,7 @@ async def test_scheduler_clears_transient_upload_error_after_retry_success(tmp_p
 
     succeeded = await scheduler._upload(state, payload, context, [paths.downloads / "sample.mp4"])
 
-    assert succeeded is True
+    assert succeeded == UploadResult(123, "BV123", "mid:1", "cookies.json")
     assert attempts == 3
     assert state.upload_status == "Idle"
     assert state.error is None
@@ -319,7 +403,7 @@ async def test_bilibili_qrcode_polling_uses_async_client(monkeypatch) -> None:
 
 async def test_background_jobs_keep_only_recent_terminal_entries() -> None:
     manager = BackgroundJobManager(max_completed=5)
-    submitted = [manager.submit("test", asyncio.sleep(0)) for _ in range(20)]
+    submitted = [manager.submit("test", lambda: asyncio.sleep(0)) for _ in range(20)]
     await asyncio.gather(*tuple(manager.tasks.values()))
     await asyncio.sleep(0)
 
@@ -331,7 +415,7 @@ async def test_background_job_logs_start_and_completion(caplog) -> None:
     manager = BackgroundJobManager()
 
     with caplog.at_level("INFO", logger="biliup.jobs"):
-        job = manager.submit("upload", asyncio.sleep(0))
+        job = manager.submit("upload", lambda: asyncio.sleep(0))
         await manager.tasks[job.id]
 
     messages = [record.getMessage() for record in caplog.records]
@@ -344,7 +428,7 @@ async def test_background_jobs_persist_across_manager_restarts(tmp_path: Path) -
     database.migrate()
     manager = BackgroundJobManager(database)
 
-    completed = manager.submit("upload", asyncio.sleep(0))
+    completed = manager.submit("upload", lambda: asyncio.sleep(0))
     await manager.tasks[completed.id]
     await asyncio.sleep(0)
 
@@ -359,12 +443,73 @@ async def test_background_job_errors_are_redacted_before_persistence(tmp_path: P
     database = Database(tmp_path / "jobs.sqlite3")
     database.migrate()
     manager = BackgroundJobManager(database)
-    failed = manager.submit("upload", fail_with_secret())
+    failed = manager.submit("upload", fail_with_secret)
     await manager.tasks[failed.id]
 
     restored = BackgroundJobManager(database).get(failed.id)
     assert restored is not None
     assert restored.error == "signature=<redacted> Cookie=<redacted>"
+
+
+async def test_background_jobs_bound_active_work_and_release_idempotency_keys() -> None:
+    manager = BackgroundJobManager(active_limits={"upload": 1})
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def blocked_upload() -> None:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+
+    first = manager.submit("upload", blocked_upload, idempotency_key="same-upload")
+    await started.wait()
+    duplicate = manager.submit("upload", blocked_upload, idempotency_key="same-upload")
+
+    assert duplicate.id == first.id
+    assert calls == 1
+    with pytest.raises(RuntimeError, match="Too many active upload jobs"):
+        manager.submit("upload", blocked_upload, idempotency_key="different-upload")
+
+    release.set()
+    await manager.tasks[first.id]
+    second = manager.submit("upload", blocked_upload, idempotency_key="same-upload")
+    assert second.id != first.id
+    await manager.tasks[second.id]
+    assert calls == 2
+
+
+async def test_scheduler_stop_cancels_recording_before_waiting_for_review(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    stopped = False
+
+    class FakeReview:
+        async def stop(self) -> None:
+            return None
+
+    class FakeRecorder:
+        async def stop(self) -> None:
+            nonlocal stopped
+            stopped = True
+
+    scheduler.submission_reviews = FakeReview()
+    state = WorkerState(streamer_id=1)
+    state.recorder = FakeRecorder()
+    state.recording_task = asyncio.create_task(asyncio.sleep(60))
+    state.task = asyncio.create_task(asyncio.sleep(60))
+    scheduler.workers[1] = state
+
+    await scheduler.stop()
+
+    assert scheduler._closing is True
+    assert stopped is True
+    assert state.recording_task.cancelled()
+    assert state.task.cancelled()
+    assert scheduler.workers == {}
+    database.dispose()
 
 
 def test_background_jobs_mark_interrupted_work_and_prune_old_records(tmp_path: Path) -> None:
@@ -523,15 +668,20 @@ async def test_download_slot_is_released_before_upload(tmp_path: Path, monkeypat
 
     async def assert_slot_released(*_args):
         assert not scheduler.download_semaphore.locked()
-        return True
+        return UploadResult(123, "BV123", "mid:1", "cookies.json")
 
     monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", FastRecorder)
     monkeypatch.setattr(scheduler, "_upload", assert_slot_released)
+    payload = scheduler_payload(upload_streamers_id=template_id)
+    payload["postprocessor"] = ["rm"]
     await scheduler._record_active(
         WorkerState(streamer_id=7),
-        scheduler_payload(upload_streamers_id=template_id),
+        payload,
         SchedulerChecker(),
     )
+    assert (paths.downloads / "complete.mp4").exists()
+    with database.session_factory() as session:
+        assert session.query(PendingSubmission).count() == 1
     database.dispose()
 
 

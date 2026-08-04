@@ -1,4 +1,6 @@
+import json
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import ANY
 
 import aiohttp
@@ -58,6 +60,9 @@ def test_submit_web_uses_v3_endpoint(monkeypatch) -> None:
     calls = []
 
     class FakeResponse:
+        def raise_for_status(self):
+            return None
+
         def json(self):
             return {"code": 0, "data": {"aid": 123}}
 
@@ -181,6 +186,44 @@ def test_build_web_params_adds_wbi_signature(monkeypatch) -> None:
     assert params["csrf"] == "csrf-token"
     assert params["wts"] == "1234"
     assert len(params["w_rid"]) == 32
+
+
+def test_read_only_login_does_not_rewrite_cookie(tmp_path: Path, monkeypatch) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text(
+        json.dumps(
+            {
+                "cookie_info": {"cookies": [{"name": "DedeUserID", "value": "123"}]},
+                "token_info": {"access_token": "access", "refresh_token": "refresh"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    original = cookie_path.read_bytes()
+    bili = BiliBili(Data())
+    monkeypatch.setattr(bili, "login_by_cookies", lambda _cookies: None)
+    monkeypatch.setattr(bili, "store", lambda: pytest.fail("read-only login attempted to store cookies"))
+
+    bili.login(str(cookie_path), str(cookie_path), persist=False)
+
+    assert cookie_path.read_bytes() == original
+
+
+def test_cookie_store_uses_atomic_replacement(tmp_path: Path) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text("old", encoding="utf-8")
+    bili = BiliBili(Data())
+    bili.persistence_path = str(cookie_path)
+    bili.cookies = {"cookie_info": {"cookies": [{"name": "DedeUserID", "value": "123"}]}}
+    bili.access_token = "access"
+    bili.refresh_token = "refresh"
+
+    bili.store()
+
+    payload = json.loads(cookie_path.read_text(encoding="utf-8"))
+    assert payload["access_token"] == "access"
+    assert payload["refresh_token"] == "refresh"
+    assert list(tmp_path.glob(".cookies.json.*.tmp")) == []
 
 
 async def test_upload_aborts_after_final_chunk_failure(monkeypatch) -> None:

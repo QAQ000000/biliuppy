@@ -18,6 +18,20 @@ def build_parser() -> argparse.ArgumentParser:
     server.add_argument("--config", type=Path, default=None)
     server.add_argument("--no-auth", action="store_true")
     server.add_argument("--reload", action="store_true")
+    access_log = server.add_mutually_exclusive_group()
+    access_log.add_argument(
+        "--access-log",
+        dest="access_log",
+        action="store_true",
+        help="Enable Uvicorn HTTP access logging",
+    )
+    access_log.add_argument(
+        "--no-access-log",
+        dest="access_log",
+        action="store_false",
+        help="Disable Uvicorn HTTP access logging (default)",
+    )
+    server.set_defaults(access_log=False)
 
     validate = subparsers.add_parser("validate-config", help="Validate a YAML or TOML configuration")
     validate.add_argument("path", type=Path)
@@ -51,7 +65,13 @@ def main() -> None:
                 if value is not None
             }
         )
-        uvicorn.run(create_app(settings), host=settings.host, port=settings.port, reload=getattr(args, "reload", False))
+        uvicorn.run(
+            create_app(settings),
+            host=settings.host,
+            port=settings.port,
+            reload=getattr(args, "reload", False),
+            access_log=getattr(args, "access_log", False),
+        )
         return
     raise SystemExit(2)
 

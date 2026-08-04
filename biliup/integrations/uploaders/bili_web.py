@@ -6,24 +6,29 @@ import math
 import os
 import random
 import re
+import tempfile
 import time
 import urllib.parse
-from dataclasses import asdict, dataclass, field, InitVar
+import xml.etree.ElementTree as ET
+from collections.abc import Callable
+from contextlib import nullcontext
+from dataclasses import InitVar, asdict, dataclass, field
 from json import JSONDecodeError
-from os.path import splitext, basename
-from typing import Union, Any, List, Optional, Callable
+from os.path import basename, splitext
+from typing import Any, List, Optional, Union
 from urllib import parse
 from urllib.parse import quote
 
 import aiohttp
 import requests.utils
 import rsa
-import xml.etree.ElementTree as ET
 from requests.adapters import HTTPAdapter, Retry
 
 from biliup.config import config
 from biliup.engine import Plugin
 from biliup.engine.upload import UploadBase, logger
+from biliup.integrations.upload_errors import UploadRejectedError
+from biliup.integrations.upload_state import UploadStateStore
 from biliup.platforms import Wbi
 
 
@@ -156,6 +161,8 @@ class BiliWeb(UploadBase):
         up_close_danmu=0,
         copyright_source=None,
         extra_fields="",
+        upload_state: UploadStateStore | None = None,
+        submit_interval: int = 60,
     ):
         """
         :param principal:
@@ -202,12 +209,14 @@ class BiliWeb(UploadBase):
         self.up_close_danmu = up_close_danmu
         self.copyright_source = copyright_source
         self.extra_fields = extra_fields
+        self.upload_state = upload_state
+        self.submit_interval = max(0, int(submit_interval))
 
     def upload(
         self,
         file_list: List[UploadBase.FileInfo],
         database_row_id: int = 0
-    ) -> List[UploadBase.FileInfo]:
+    ) -> dict:
         '''
         上传视频
         :param file_list: 视频文件名列表
@@ -220,9 +229,18 @@ class BiliWeb(UploadBase):
         with BiliBili(video) as bili:
             bili.app_key = self.user.get('app_key')
             bili.appsec = self.user.get('appsec')
-            bili.login(self.persistence_path, self.user_cookie)
+            guard = self.upload_state.account_guard() if self.upload_state else nullcontext()
+            with guard:
+                bili.login(self.persistence_path, self.user_cookie)
             for file in file_list:
-                video_part = bili.upload_file(file.video, self.lines, self.threads)  # 上传视频
+                video_part = self.upload_state.find_part(file.video) if self.upload_state else None
+                if video_part:
+                    video_part['title'] = splitext(basename(file.video))[0]
+                    logger.info("复用已上传分P file=%s filename=%s", file.video, video_part['filename'])
+                else:
+                    video_part = bili.upload_file(file.video, self.lines, self.threads)
+                    if self.upload_state:
+                        self.upload_state.save_part(file.video, video_part)
                 video_part['title'] = video_part['title'][:80]
                 video.append(video_part)  # 添加已经上传的视频
             video.title = self.data["format_title"][:80]  # 稿件标题限制80字
@@ -248,7 +266,15 @@ class BiliWeb(UploadBase):
                 video.delay_time(int(time.time()) + self.dtime)
             if self.cover_path:
                 video.cover = bili.cover_up(self.cover_path).replace('http:', '')
-            ret = bili.submit(self.submit_api)  # 提交视频
+            if self.upload_state:
+                ret = self.upload_state.submit(
+                    lambda: bili.submit(self.submit_api),
+                    self.submit_interval,
+                )
+            else:
+                ret = bili.submit(self.submit_api)
+            if self.upload_state:
+                self.upload_state.remove_parts([file.video for file in file_list])
         result_data = ret.get('data') or {}
         logger.info(
             "投稿成功 code=%s aid=%s bvid=%s",
@@ -256,7 +282,7 @@ class BiliWeb(UploadBase):
             result_data.get('aid'),
             result_data.get('bvid'),
         )
-        return file_list
+        return ret
 
     def creditsToDesc_v2(self):
             desc_v2 = []
@@ -367,7 +393,7 @@ class BiliBili:
             return {item["name"]: item["value"] for item in cookies["cookies"]}
         return cookies
 
-    def login(self, persistence_path, user_cookie):
+    def login(self, persistence_path, user_cookie, *, persist: bool = True):
         self.persistence_path = user_cookie
         if os.path.isfile(self.persistence_path):
             logger.info('使用持久化内容上传')
@@ -380,7 +406,8 @@ class BiliBili:
                 self.login_by_password(**self.account)
         else:
             self.login_by_password(**self.account)
-        self.store()
+        if persist:
+            self.store()
 
     def load(self):
         try:
@@ -392,11 +419,32 @@ class BiliBili:
             logger.exception('加载cookie出错')
 
     def store(self):
-        with open(self.persistence_path, "w") as f:
-            json.dump({**self.cookies,
-                       'access_token': self.access_token,
-                       'refresh_token': self.refresh_token
-                       }, f)
+        target = os.path.abspath(self.persistence_path)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=os.path.dirname(target),
+                prefix=f".{os.path.basename(target)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary_path = stream.name
+                json.dump(
+                    {
+                        **self.cookies,
+                        'access_token': self.access_token,
+                        'refresh_token': self.refresh_token,
+                    },
+                    stream,
+                )
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, target)
+        finally:
+            if temporary_path and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
     def send_sms(self, phone_number, country_code):
         params = {
@@ -824,7 +872,7 @@ class BiliBili:
             ret = self.submit_web()
             if ret["code"] != 0:
                 logger.error(f'网页端接口提交失败: {ret}')
-                raise Exception(ret)
+                raise UploadRejectedError(ret)
         if not ret:
             raise Exception(f'不存在的选项：{submit_api}')
         return ret
@@ -833,12 +881,26 @@ class BiliBili:
         logger.info('使用网页端api提交')
         post_data = build_web_payload(self.video)
         params = self._build_web_params()
-        return self.__session.post(
+        response = self.__session.post(
             'https://member.bilibili.com/x/vu/web/add/v3',
             params=params,
             timeout=60,
             json=post_data,
-        ).json()
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_archive(self, aid: int) -> dict:
+        response = self.__session.get(
+            'https://member.bilibili.com/x/vupre/web/archive/view',
+            params={'aid': aid},
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get('code') != 0:
+            raise UploadRejectedError(payload)
+        return payload.get('data') or payload
 
     def _build_web_params(self) -> dict:
         if not self.__bili_jct:
