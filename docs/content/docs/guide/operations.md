@@ -14,6 +14,10 @@ toc = true
 top = false
 +++
 
+## 服务实例
+
+同一 `BILIUP_HOME` 只能运行一个 `biliup server` 进程。不要配置多个 Uvicorn/Gunicorn worker，也不要让多套 systemd 服务共用同一 HOME，否则会重复检测、录制和投稿。
+
 ## 任务状态
 
 常见录制状态：

@@ -96,6 +96,51 @@ async def test_bilibili_batch_failure_is_shared_by_concurrent_probes(monkeypatch
     assert calls == 1
 
 
+async def test_bilibili_batch_cooldown_excludes_official_detail_api(monkeypatch) -> None:
+    calls = {
+        "batch": 0,
+        "official_detail": 0,
+        "fallback_room_init": 0,
+        "fallback_detail": 0,
+    }
+
+    async def fake_get(url, **_kwargs):
+        if "getRoomBaseInfo" in url:
+            calls["batch"] += 1
+            return FakeResponse(payload={"code": -352, "message": "risk control"})
+        if url.startswith(bilibili_platform.OFFICIAL_API):
+            calls["official_detail"] += 1
+            return FakeResponse(payload={"code": -352, "message": "risk control"})
+        if url.endswith("/room/v1/Room/room_init"):
+            calls["fallback_room_init"] += 1
+            return FakeResponse(
+                payload={"code": 0, "data": {"live_status": 1, "room_id": 123}}
+            )
+        calls["fallback_detail"] += 1
+        return FakeResponse(
+            payload={"code": 0, "data": {"room_info": {"live_status": 0}}}
+        )
+
+    urls = [f"https://live.bilibili.com/{room_id}" for room_id in range(100, 108)]
+    bilibili_platform.configure_bilibili_rooms(urls)
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+
+    with config.overlay({"user": {}, "bili_fallback_api": "https://fallback.example"}):
+        results = await asyncio.gather(
+            *(Bililive(str(index), url).aprobe_stream(is_check=True) for index, url in enumerate(urls))
+        )
+
+    assert all(result.status is StreamStatus.OFFLINE for result in results)
+    assert calls == {
+        "batch": 1,
+        "official_detail": 0,
+        "fallback_room_init": len(urls),
+        "fallback_detail": len(urls),
+    }
+
+
 async def test_bilibili_batch_omission_is_cached(monkeypatch) -> None:
     calls = 0
 

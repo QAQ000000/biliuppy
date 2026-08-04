@@ -303,7 +303,7 @@ class Bililive(DownloadBase):
         wbi.sign(params)
         room_info = None
         probe_errors = list(room_init_errors)
-        for api in dict.fromkeys(self.bili_api_list):
+        for api in room_init_apis:
             try:
                 response = await _bilibili_get(
                     f"{api}/xlive/web-room/v1/index/getInfoByRoom",
