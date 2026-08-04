@@ -1,28 +1,27 @@
-import asyncio
+import copy
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
-import shutil
-import copy
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import AsyncGenerator, List, Optional
 from urllib.parse import urlparse
-from datetime import datetime, timezone
 
 import requests
-from requests.utils import DEFAULT_ACCEPT_ENCODING, parse_header_links
 from httpx import HTTPStatusError
+from PIL import Image
+from requests.utils import DEFAULT_ACCEPT_ENCODING
 
 from biliup.common.util import check_timerange, client
-
-from biliup.platforms import random_user_agent
-from PIL import Image
-
 from biliup.config import config
 from biliup.danmaku import IDanmakuClient
+from biliup.engine.status import StreamProbeResult
+from biliup.platforms import random_user_agent
+
 # from biliup.app import context
 logger = logging.getLogger('biliup')
 
@@ -83,6 +82,14 @@ class DownloadBase(ABC):
     async def acheck_stream(self, is_check=False):
         # is_check 是否是检测模式 检测模式可以忽略只有下载时需要的耗时操作
         raise NotImplementedError()
+
+    async def aprobe_stream(self, is_check=False) -> StreamProbeResult:
+        """Return a tri-state probe while keeping legacy boolean checkers compatible."""
+        try:
+            is_live = await self.acheck_stream(is_check=is_check)
+        except Exception as exc:
+            return StreamProbeResult.unknown(str(exc))
+        return StreamProbeResult.live() if is_live else StreamProbeResult.offline()
 
     def should_record(self):
         # 检查房间名

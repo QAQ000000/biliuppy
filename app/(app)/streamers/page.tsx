@@ -76,6 +76,15 @@ export default function Home() {
       case 'Waiting':
         status = <Tag color="indigo">检测/上传中</Tag>
         break
+      case 'Recovering':
+        status = <Tag color="indigo">断流恢复中</Tag>
+        break
+      case 'ConfirmingOffline':
+        status = <Tag color="amber">确认下播中</Tag>
+        break
+      case 'Degraded':
+        status = <Tag color="amber">检测/录制暂不可用</Tag>
+        break
       case 'OutOfSchedule':
         status = <Tag color="green">非录播时间</Tag>
         break

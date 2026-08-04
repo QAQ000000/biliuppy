@@ -40,7 +40,12 @@ uv run biliup validate-config ./public/config.yaml
 | `file_size` | 单个分片大小上限，单位 Byte |
 | `filtering_threshold` | 小于此值的分片视为无效并删除，单位 MiB |
 | `filename_prefix` | 文件名模板，支持 `{streamer}`、`{title}` 和时间格式 |
-| `delay` | 检测下播后的再次确认时间，单位秒 |
+| `delay` | 下播确认窗口，单位秒；窗口内恢复直播会刷新流地址并归入同一场录像 |
+| `upload_delay` | 确认下播后、开始投稿前的额外等待时间，单位秒 |
+| `checker_concurrency` | 最大同时直播状态检测请求数 |
+| `recorder_stall_timeout` | FFmpeg 存活但录像文件持续不增长时，等待多少秒后触发恢复；`0` 表示关闭 |
+| `recorder_retry_limit` | 短时间连续录制失败达到多少次后进入熔断冷却 |
+| `recorder_retry_backoff` | 连续录制失败的指数退避起始秒数，单次最大 60 秒 |
 | `pool1_size` | 最大同时录制任务数 |
 
 同时设置 `segment_time` 和 `file_size` 时，先达到限制的一项结束当前分片。

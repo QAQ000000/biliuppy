@@ -235,10 +235,10 @@ const Global: React.FC = () => {
               <br />
               单位：秒
               <br />
-              默认延迟时间为 0 秒
+              默认延迟时间为 300 秒；期间恢复直播会刷新流地址并继续归入同一场录像。
             </div>
           }
-          placeholder="0"
+          placeholder="300"
           suffix="s"
           style={{ width: '100%' }}
           fieldStyle={{
@@ -264,6 +264,68 @@ const Global: React.FC = () => {
             padding: 0,
           }}
           showClear={true}
+        />
+        <Form.InputNumber
+          field="checker_concurrency"
+          extraText="限制同时进行的平台状态请求数量，降低集中检测触发平台风控的概率。"
+          label="状态检测并发（checker_concurrency）"
+          placeholder={3}
+          min={1}
+          max={100}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Form.InputNumber
+          field="recorder_stall_timeout"
+          extraText="FFmpeg 存活但录像文件持续不增长时触发断流恢复。设为 0 可关闭。"
+          label="录像无进度超时（recorder_stall_timeout）"
+          placeholder={90}
+          suffix="s"
+          min={0}
+          max={3600}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Form.InputNumber
+          field="recorder_retry_limit"
+          extraText="短时间连续录制失败达到此次数后，进入至少 5 分钟的熔断冷却。"
+          label="录制恢复上限（recorder_retry_limit）"
+          placeholder={10}
+          min={1}
+          max={100}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Form.InputNumber
+          field="recorder_retry_backoff"
+          extraText="连续失败按此秒数开始指数退避，单次最长等待 60 秒。"
+          label="录制恢复退避（recorder_retry_backoff）"
+          placeholder={5}
+          suffix="s"
+          min={1}
+          max={300}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
         />
         <Form.InputNumber
           field="pool1_size"
@@ -377,6 +439,22 @@ const Global: React.FC = () => {
             padding: 0,
           }}
           showClear={true}
+        />
+        <Form.InputNumber
+          field="upload_delay"
+          placeholder={0}
+          extraText="确认下播后、开始投稿前额外等待的时间。通常保持为 0。"
+          label="投稿等待时间（upload_delay）"
+          suffix="s"
+          min={0}
+          max={86400}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
         />
 
         <Form.InputNumber

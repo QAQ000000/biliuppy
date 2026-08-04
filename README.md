@@ -141,7 +141,11 @@ uv run biliup server --config ./public/config.yaml
 | --- | --- |
 | `segment_time` / `file_size` | 录像分段时长和大小上限 |
 | `filtering_threshold` | 删除过小的无效录像分片 |
-| `delay` | 下播后二次确认时间 |
+| `delay` | 下播确认窗口；窗口内恢复直播会刷新流地址并续录 |
+| `upload_delay` | 确认下播后、开始投稿前的额外等待时间 |
+| `checker_concurrency` | 最大同时直播状态检测请求数 |
+| `recorder_stall_timeout` | 录像文件无增长多久后触发断流恢复，`0` 表示关闭 |
+| `recorder_retry_limit` / `recorder_retry_backoff` | 连续录制失败的熔断次数和指数退避起始时间 |
 | `lines` / `threads` | B 站上传线路和单文件并发数 |
 | `log_file_max_size_mb` | 单个日志文件大小上限，保留 5 个轮转备份 |
 | `history_max_records` | 直播历史数据库记录上限 |

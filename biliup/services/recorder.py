@@ -11,6 +11,22 @@ from pathlib import Path
 logger = logging.getLogger("biliup.recorder")
 
 
+class RecorderError(RuntimeError):
+    pass
+
+
+class RecorderProcessError(RecorderError):
+    def __init__(self, return_code: int):
+        self.return_code = return_code
+        super().__init__(f"FFmpeg exited with code {return_code}")
+
+
+class RecorderStalledError(RecorderError):
+    def __init__(self, timeout: float):
+        self.timeout = timeout
+        super().__init__(f"FFmpeg output did not grow for {timeout:g} seconds")
+
+
 def duration_seconds(value: str | int | None) -> int | None:
     if value is None or value == "":
         return None
@@ -41,6 +57,7 @@ class RecorderSpec:
     file_size: int | None = None
     filename_prefix: str | None = None
     extra_args: list[str] | None = None
+    stall_timeout: float | None = 90
 
 
 SegmentCallback = Callable[[Path], Awaitable[None]]
@@ -80,7 +97,10 @@ class FFmpegRecorder:
         if self.spec.headers:
             header_text = "".join(f"{key}: {value}\r\n" for key, value in self.spec.headers.items())
             command.extend(["-headers", header_text])
-        command.extend(["-rw_timeout", "20000000", "-i", self.spec.stream_url, "-c", "copy"])
+        command.extend(["-rw_timeout", "20000000"])
+        if self.spec.stream_url.startswith(("http://", "https://")):
+            command.extend(["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10"])
+        command.extend(["-i", self.spec.stream_url, "-c", "copy"])
         if self.spec.format == "mp4":
             command.extend(["-bsf:a", "aac_adtstoasc"])
         command.extend(self.spec.extra_args or [])
@@ -121,20 +141,69 @@ class FFmpegRecorder:
             stderr=asyncio.subprocess.STDOUT,
         )
         assert self.process.stdout is not None
+        stall_timeout = max(0.0, float(self.spec.stall_timeout or 0))
+        progress_interval = min(5.0, max(0.1, stall_timeout / 3)) if stall_timeout else None
+        last_size = self._output_size()
+        last_progress = time.monotonic()
+        last_checked = last_progress
         try:
-            async for raw_line in self.process.stdout:
-                line = raw_line.decode(errors="replace").strip().strip("\"'")
-                candidate = Path(line)
-                if callback and candidate.is_file() and (notified is None or candidate not in notified):
-                    await callback(candidate)
-                    if notified is not None:
-                        notified.add(candidate)
-                elif line:
-                    logger.debug("[%s] %s", self.spec.name, line)
+            while True:
+                try:
+                    if progress_interval is None:
+                        raw_line = await self.process.stdout.readline()
+                    else:
+                        raw_line = await asyncio.wait_for(
+                            self.process.stdout.readline(),
+                            timeout=progress_interval,
+                        )
+                except asyncio.TimeoutError:
+                    raw_line = None
+
+                if raw_line == b"":
+                    break
+                if raw_line:
+                    line = raw_line.decode(errors="replace").strip().strip("\"'")
+                    candidate = Path(line)
+                    if callback and candidate.is_file() and (notified is None or candidate not in notified):
+                        await callback(candidate)
+                        if notified is not None:
+                            notified.add(candidate)
+                    elif line:
+                        logger.debug("[%s] %s", self.spec.name, line)
+
+                now = time.monotonic()
+                if progress_interval is not None and now - last_checked >= progress_interval:
+                    current_size = self._output_size()
+                    if current_size != last_size:
+                        last_size = current_size
+                        last_progress = now
+                    last_checked = now
+                    if now - last_progress >= stall_timeout:
+                        logger.error(
+                            "FFmpeg recording for %s stalled for %.1f seconds",
+                            self.spec.name,
+                            stall_timeout,
+                        )
+                        self.process.terminate()
+                        try:
+                            await asyncio.wait_for(self.process.wait(), timeout=10)
+                        except asyncio.TimeoutError:
+                            self.process.kill()
+                            await self.process.wait()
+                        raise RecorderStalledError(stall_timeout)
             return await self.process.wait()
         except BaseException:
             await self.stop()
             raise
+
+    def _output_size(self) -> int:
+        total = 0
+        for file in self.output_files():
+            try:
+                total += file.stat().st_size
+            except OSError:
+                continue
+        return total
 
     async def _notify_files(
         self,
@@ -161,8 +230,8 @@ class FFmpegRecorder:
         if not size_limited:
             return_code = await self._run_process(self._command(output, segmented), on_segment, notified)
             if return_code and not self._stopping:
-                raise RuntimeError(f"FFmpeg exited with code {return_code}")
-            files = sorted(self.spec.output_dir.glob(f"{stem}*.{self.spec.format}"))
+                raise RecorderProcessError(return_code)
+            files = self.output_files()
             await self._notify_files(files, on_segment, notified)
             return files
 
@@ -172,7 +241,7 @@ class FFmpegRecorder:
             started = time.monotonic()
             return_code = await self._run_process(self._command(part, False, bounded=True))
             if return_code and not self._stopping:
-                raise RuntimeError(f"FFmpeg exited with code {return_code}")
+                raise RecorderProcessError(return_code)
             if self._stopping or not part.is_file():
                 break
             reached_size = part.stat().st_size >= int(self.spec.file_size * 0.95)
@@ -181,9 +250,13 @@ class FFmpegRecorder:
             if not (reached_size or reached_time):
                 break
             index += 1
-        files = sorted(self.spec.output_dir.glob(f"{stem}*.{self.spec.format}"))
+        files = self.output_files()
         await self._notify_files(files, on_segment, notified)
         return files
+
+    def output_files(self) -> list[Path]:
+        stem = self.prepare_stem()
+        return sorted(self.spec.output_dir.glob(f"{stem}*.{self.spec.format}"))
 
     async def stop(self) -> None:
         self._stopping = True

@@ -12,11 +12,13 @@ from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database import Database
 from biliup.database.models import BackgroundJobRecord, FileItem, StreamerInfo, UploadStreamer
+from biliup.engine import StreamProbeResult
 from biliup.integrations import bilibili as bili_service
 from biliup.integrations.uploader import upload_files
 from biliup.services.history import prune_history
 from biliup.services.hooks import HookRunner
 from biliup.services.jobs import BackgroundJobManager
+from biliup.services.recorder import RecorderProcessError
 from biliup.services.scheduler import RecordingScheduler, WorkerState, recording_allowed
 
 
@@ -197,6 +199,9 @@ async def test_scheduler_retries_upload_and_keeps_files_after_final_failure(tmp_
         stream_headers: dict[str, str] = {}
         live_cover_url = None
         danmaku = None
+
+        async def aprobe_stream(self, is_check=False):
+            return StreamProbeResult.offline()
 
         def danmaku_init(self, _filename_prefix=None):
             return None
@@ -427,6 +432,9 @@ class SchedulerChecker:
     live_cover_url = None
     danmaku = None
 
+    async def aprobe_stream(self, is_check=False):
+        return StreamProbeResult.offline()
+
     def danmaku_init(self, _filename_prefix=None):
         return None
 
@@ -495,7 +503,7 @@ async def test_download_slot_is_released_before_upload(tmp_path: Path, monkeypat
     scheduler = RecordingScheduler(
         database,
         paths,
-        ConfigStore({"pool1_size": 1, "filtering_threshold": 0}),
+        ConfigStore({"pool1_size": 1, "filtering_threshold": 0, "delay": 0}),
         enabled=False,
     )
 
@@ -555,6 +563,43 @@ async def test_ffmpeg_failure_does_not_create_empty_history(tmp_path: Path, monk
     database.dispose()
 
 
+async def test_ffmpeg_process_failure_keeps_completed_file_in_history(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"filtering_threshold": 0, "delay": 0}),
+        enabled=False,
+    )
+
+    class InterruptedRecorder:
+        def __init__(self, spec):
+            self.file = spec.output_dir / "interrupted.mp4"
+
+        def prepare_stem(self):
+            return "interrupted"
+
+        async def run(self, _callback):
+            self.file.write_bytes(b"recoverable recording")
+            raise RecorderProcessError(1)
+
+        def output_files(self):
+            return [self.file]
+
+        async def stop(self):
+            return None
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", InterruptedRecorder)
+    await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(), SchedulerChecker())
+
+    with database.session_factory() as session:
+        history = session.query(StreamerInfo).one()
+        assert Path(history.files[0].file).read_bytes() == b"recoverable recording"
+    database.dispose()
+
+
 async def test_parallel_segment_hooks_are_bounded(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)
@@ -562,7 +607,7 @@ async def test_parallel_segment_hooks_are_bounded(tmp_path: Path, monkeypatch) -
     scheduler = RecordingScheduler(
         database,
         paths,
-        ConfigStore({"filtering_threshold": 0, "segment_processor_concurrency": 2}),
+        ConfigStore({"filtering_threshold": 0, "segment_processor_concurrency": 2, "delay": 0}),
         enabled=False,
     )
     active = 0
@@ -596,4 +641,171 @@ async def test_parallel_segment_hooks_are_bounded(tmp_path: Path, monkeypatch) -
     await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(parallel=True), SchedulerChecker())
 
     assert peak == 2
+    database.dispose()
+
+
+async def test_scheduler_resumes_interrupted_stream_as_one_history_record(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"filtering_threshold": 0, "delay": 0}),
+        enabled=False,
+    )
+    stream_urls: list[str] = []
+
+    class RecoveringRecorder:
+        count = 0
+
+        def __init__(self, spec):
+            self.spec = spec
+            self.index = RecoveringRecorder.count
+            RecoveringRecorder.count += 1
+            self.file = spec.output_dir / f"part-{self.index}.mp4"
+
+        def prepare_stem(self):
+            return f"part-{self.index}"
+
+        async def run(self, callback):
+            stream_urls.append(self.spec.stream_url)
+            self.file.write_bytes(f"part-{self.index}".encode())
+            await callback(self.file)
+
+        async def stop(self):
+            return None
+
+    class RecoveringChecker(SchedulerChecker):
+        def __init__(self):
+            self.probes = 0
+            self.raw_stream_url = "https://example.invalid/live-1.flv"
+
+        async def aprobe_stream(self, is_check=False):
+            self.probes += 1
+            if self.probes == 1:
+                self.raw_stream_url = "https://example.invalid/live-2.flv"
+                return StreamProbeResult.live()
+            return StreamProbeResult.offline()
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", RecoveringRecorder)
+    await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(), RecoveringChecker())
+
+    assert stream_urls == [
+        "https://example.invalid/live-1.flv",
+        "https://example.invalid/live-2.flv",
+    ]
+    with database.session_factory() as session:
+        history = session.query(StreamerInfo).all()
+        assert len(history) == 1
+        assert [Path(item.file).name for item in history[0].files] == ["part-0.mp4", "part-1.mp4"]
+    database.dispose()
+
+
+async def test_offline_confirmation_requires_consecutive_results(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"delay": 1, "checker_sleep": 1}),
+        enabled=False,
+    )
+    probes = [
+        StreamProbeResult.offline(),
+        StreamProbeResult.unknown("temporary failure"),
+        StreamProbeResult.offline(),
+        StreamProbeResult.offline(),
+        StreamProbeResult.offline(),
+    ]
+
+    class ConfirmingChecker(SchedulerChecker):
+        async def aprobe_stream(self, is_check=False):
+            return probes.pop(0)
+
+    ticks = iter([0.0, 2.0])
+
+    async def immediate_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(scheduler, "_clock", lambda: next(ticks))
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", immediate_sleep)
+    recovered = await scheduler._wait_for_stream_recovery(WorkerState(streamer_id=7), ConfirmingChecker())
+
+    assert recovered is False
+    assert probes == []
+    database.dispose()
+
+
+async def test_recorder_failures_back_off_and_open_circuit(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore(
+            {
+                "filtering_threshold": 0,
+                "delay": 0,
+                "recorder_retry_limit": 2,
+                "recorder_retry_backoff": 1,
+            }
+        ),
+        enabled=False,
+    )
+    sleeps: list[float] = []
+
+    class FailingThenEndingRecorder:
+        count = 0
+
+        def __init__(self, spec):
+            self.spec = spec
+            self.index = FailingThenEndingRecorder.count
+            FailingThenEndingRecorder.count += 1
+            self.file = spec.output_dir / f"retry-{self.index}.mp4"
+
+        def prepare_stem(self):
+            return f"retry-{self.index}"
+
+        async def run(self, callback):
+            self.file.write_bytes(f"retry-{self.index}".encode())
+            await callback(self.file)
+            if self.index < 2:
+                raise RecorderProcessError(1)
+
+        def output_files(self):
+            return [self.file]
+
+        async def stop(self):
+            return None
+
+    class RetryChecker(SchedulerChecker):
+        def __init__(self):
+            self.probes = 0
+            self.raw_stream_url = "https://example.invalid/live.flv"
+
+        async def aprobe_stream(self, is_check=False):
+            self.probes += 1
+            if self.probes <= 4:
+                return StreamProbeResult.live()
+            return StreamProbeResult.offline()
+
+    async def immediate_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", FailingThenEndingRecorder)
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", immediate_sleep)
+    monkeypatch.setattr("biliup.services.scheduler.random.uniform", lambda _start, _end: 0)
+    await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(), RetryChecker())
+
+    assert sleeps == [1, 300]
+    with database.session_factory() as session:
+        history = session.query(StreamerInfo).one()
+        assert [Path(item.file).name for item in history.files] == [
+            "retry-0.mp4",
+            "retry-1.mp4",
+            "retry-2.mp4",
+        ]
     database.dispose()

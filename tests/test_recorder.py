@@ -5,12 +5,79 @@ from pathlib import Path
 
 import pytest
 
-from biliup.services.recorder import FFmpegRecorder, RecorderSpec, duration_seconds
+from biliup.services.recorder import FFmpegRecorder, RecorderSpec, RecorderStalledError, duration_seconds
 
 
 def test_duration_seconds() -> None:
     assert duration_seconds("02:03:04") == 7384
     assert duration_seconds(None) is None
+
+
+def test_http_recorder_enables_ffmpeg_reconnect(tmp_path: Path) -> None:
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+        )
+    )
+
+    command = recorder._command(tmp_path / "output.flv", segmented=False)
+
+    assert command[command.index("-reconnect") + 1] == "1"
+    assert command[command.index("-reconnect_streamed") + 1] == "1"
+    assert command[command.index("-reconnect_delay_max") + 1] == "10"
+
+
+async def test_recorder_stall_watchdog_terminates_ffmpeg(tmp_path: Path, monkeypatch) -> None:
+    class NeverEndingOutput:
+        async def readline(self):
+            await asyncio.sleep(60)
+            return b""
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = NeverEndingOutput()
+            self.returncode = None
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = 1
+
+        def kill(self):
+            self.returncode = 1
+
+        async def wait(self):
+            while self.returncode is None:
+                await asyncio.sleep(0)
+            return self.returncode
+
+    process = FakeProcess()
+
+    async def fake_create_subprocess_exec(*_command, **_kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+            stall_timeout=0.05,
+        )
+    )
+
+    with pytest.raises(RecorderStalledError, match="did not grow"):
+        await recorder._run_process(["ffmpeg"])
+
+    assert process.terminated is True
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg is not installed")

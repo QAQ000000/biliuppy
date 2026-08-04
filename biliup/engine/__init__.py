@@ -1,4 +1,5 @@
 from .decorators import Plugin
+from .status import StreamProbeResult, StreamStatus
 
 
 def invert_dict(d: dict):
@@ -12,4 +13,4 @@ def invert_dict(d: dict):
     return inverse_dict
 
 
-__all__ = ['invert_dict', 'Plugin']
+__all__ = ["invert_dict", "Plugin", "StreamProbeResult", "StreamStatus"]

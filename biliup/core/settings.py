@@ -66,8 +66,13 @@ class RecordingConfig(BaseModel):
     lines: str = "AUTO"
     threads: int = 3
     delay: int = 300
+    upload_delay: int = Field(default=0, ge=0, le=86_400)
     event_loop_interval: int = 30
     checker_sleep: int = 10
+    checker_concurrency: int = Field(default=3, ge=1, le=100)
+    recorder_stall_timeout: int = Field(default=90, ge=0, le=3_600)
+    recorder_retry_limit: int = Field(default=10, ge=1, le=100)
+    recorder_retry_backoff: int = Field(default=5, ge=1, le=300)
     pool1_size: int = 5
     pool2_size: int = 3
     max_upload_limit: int = 8

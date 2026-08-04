@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,12 +22,12 @@ from biliup.config import ConfigStore
 from biliup.core import AppPaths
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo, UploadStreamer
 from biliup.database.session import Database
-from biliup.engine import Plugin
+from biliup.engine import Plugin, StreamProbeResult, StreamStatus
 from biliup.integrations.uploader import upload_files
 
 from .history import prune_history
 from .hooks import HookRunner
-from .recorder import FFmpegRecorder, RecorderSpec
+from .recorder import FFmpegRecorder, RecorderError, RecorderSpec
 
 logger = logging.getLogger("biliup.scheduler")
 
@@ -87,9 +88,11 @@ class RecordingScheduler:
         self.enabled = enabled
         self._closing = False
         self._plugins_loaded = False
+        self._clock = time.monotonic
         self.download_semaphore = asyncio.Semaphore(max(1, int(config.get("pool1_size", 5) or 5)))
         self.upload_semaphore = asyncio.Semaphore(max(1, int(config.get("pool2_size", 3) or 3)))
         self.segment_semaphore = asyncio.Semaphore(max(1, int(config.get("segment_processor_concurrency", 4) or 4)))
+        self.checker_semaphore = asyncio.Semaphore(max(1, int(config.get("checker_concurrency", 3) or 3)))
 
     async def start(self) -> None:
         if not self.enabled:
@@ -120,9 +123,16 @@ class RecordingScheduler:
             ids = set(session.scalars(select(LiveStreamer.id)).all())
         for streamer_id in set(self.workers) - ids:
             await self.remove(streamer_id)
-        for streamer_id in ids - set(self.workers):
+        new_ids = sorted(ids - set(self.workers))
+        interval = max(0.0, float(self.config.get("event_loop_interval", 30) or 30))
+        checker_sleep = max(0.0, float(self.config.get("checker_sleep", 10) or 0))
+        spacing = min(checker_sleep, interval / max(1, len(new_ids)))
+        for index, streamer_id in enumerate(new_ids):
             state = WorkerState(streamer_id)
-            state.task = asyncio.create_task(self._monitor(state), name=f"streamer-{streamer_id}")
+            state.task = asyncio.create_task(
+                self._monitor(state, initial_delay=index * spacing),
+                name=f"streamer-{streamer_id}",
+            )
             self.workers[streamer_id] = state
 
     async def remove(self, streamer_id: int) -> None:
@@ -156,7 +166,10 @@ class RecordingScheduler:
     def _load_streamer(self, session: Session, streamer_id: int) -> LiveStreamer | None:
         return session.scalar(select(LiveStreamer).where(LiveStreamer.id == streamer_id))
 
-    async def _monitor(self, state: WorkerState) -> None:
+    async def _monitor(self, state: WorkerState, *, initial_delay: float = 0) -> None:
+        if initial_delay:
+            await asyncio.sleep(initial_delay)
+        unknown_failures = 0
         while not self._closing:
             checker = None
             try:
@@ -172,8 +185,8 @@ class RecordingScheduler:
                 checker_type = Plugin.inspect_checker(payload["url"])
                 with self.config.overlay(payload["override"]):
                     checker = checker_type(payload["remark"], payload["url"], payload["format"] or "flv")
-                is_live = await checker.acheck_stream(is_check=False)
-                if is_live and recording_allowed(
+                probe = await self._probe_stream(checker, is_check=False)
+                if probe.status is StreamStatus.LIVE and recording_allowed(
                     checker.room_title,
                     payload["excluded_keywords"],
                     payload["time_range"],
@@ -193,7 +206,18 @@ class RecordingScheduler:
                             state.recording_task = None
                     if state.paused:
                         state.status = "Paused"
+                    unknown_failures = 0
+                elif probe.status is StreamStatus.UNKNOWN:
+                    unknown_failures += 1
+                    state.status = "Degraded"
+                    state.error = probe.reason or "Live status is temporarily unavailable"
+                    base = max(1.0, float(self.config.get("event_loop_interval", 30) or 30))
+                    ceiling = max(base, 300.0)
+                    backoff = min(base * (2 ** min(unknown_failures - 1, 4)), ceiling)
+                    jitter = random.uniform(0, max(0.0, float(self.config.get("checker_sleep", 10) or 0)))
+                    await asyncio.sleep(backoff + jitter)
                 else:
+                    unknown_failures = 0
                     state.status = "Idle"
                     state.error = None
                     await asyncio.sleep(float(self.config.get("event_loop_interval", 30)))
@@ -207,6 +231,22 @@ class RecordingScheduler:
             finally:
                 if checker is not None and hasattr(checker, "close"):
                     await asyncio.to_thread(checker.close)
+
+    async def _probe_stream(self, checker: Any, *, is_check: bool) -> StreamProbeResult:
+        async with self.checker_semaphore:
+            if hasattr(checker, "aprobe_stream"):
+                try:
+                    result = await checker.aprobe_stream(is_check=is_check)
+                except Exception as exc:
+                    return StreamProbeResult.unknown(str(exc))
+                if isinstance(result, StreamProbeResult):
+                    return result
+                return StreamProbeResult.live() if result else StreamProbeResult.offline()
+            try:
+                is_live = await checker.acheck_stream(is_check=is_check)
+            except Exception as exc:
+                return StreamProbeResult.unknown(str(exc))
+            return StreamProbeResult.live() if is_live else StreamProbeResult.offline()
 
     @staticmethod
     def _streamer_payload(streamer: LiveStreamer) -> dict[str, Any]:
@@ -258,8 +298,11 @@ class RecordingScheduler:
             file_size=override.get("file_size", self.config.get("file_size")),
             filename_prefix=payload["filename_prefix"] or self.config.get("filename_prefix"),
             extra_args=payload["opt_args"] or [],
+            stall_timeout=self.config.get("recorder_stall_timeout", 90),
         )
         files: list[Path] = []
+        seen_files: set[Path] = set()
+        recorder_failures = 0
         segment_tasks: set[asyncio.Task[None]] = set()
         segment_error: BaseException | None = None
         threshold = int(override.get("filtering_threshold", self.config.get("filtering_threshold", 20)) or 0)
@@ -277,6 +320,9 @@ class RecordingScheduler:
                 self.segment_semaphore.release()
 
         async def segment_ready(file: Path) -> None:
+            if file in seen_files or not file.is_file():
+                return
+            seen_files.add(file)
             if checker.danmaku:
                 await asyncio.to_thread(checker.danmaku.save, str(file.with_suffix(".xml")))
             if threshold and file.stat().st_size < threshold * 1024 * 1024:
@@ -299,26 +345,89 @@ class RecordingScheduler:
                 await self.hooks.run_commands(payload["segment_processor"], {**context, "file": str(file)})
 
         try:
-            async with self.download_semaphore:
-                if state.paused or self._closing:
-                    return
-                state.status = "Downloading"
-                state.error = None
-                state.recorder = FFmpegRecorder(spec)
-                stem = state.recorder.prepare_stem()
-                cover_path = await self._download_cover(checker, payload, stem)
-                context["live_cover_path"] = str(cover_path) if cover_path else ""
-                try:
-                    checker.danmaku_init(str(self.paths.downloads / stem))
-                    if checker.danmaku:
-                        await asyncio.to_thread(checker.danmaku.start)
-                except Exception:
-                    logger.exception("Danmaku initialization failed for %s", payload["remark"])
-                try:
-                    await state.recorder.run(segment_ready)
-                finally:
-                    if checker.danmaku:
-                        await asyncio.to_thread(checker.danmaku.stop)
+            state.recorder = FFmpegRecorder(spec)
+            stem = state.recorder.prepare_stem()
+            cover_path = await self._download_cover(checker, payload, stem)
+            context["live_cover_path"] = str(cover_path) if cover_path else ""
+            try:
+                checker.danmaku_init(str(self.paths.downloads / stem))
+                if checker.danmaku:
+                    await asyncio.to_thread(checker.danmaku.start)
+            except Exception:
+                logger.exception("Danmaku initialization failed for %s", payload["remark"])
+            try:
+                while not state.paused and not self._closing:
+                    recorder = state.recorder or FFmpegRecorder(spec)
+                    state.recorder = recorder
+                    recorder_error: RecorderError | None = None
+                    run_started = self._clock()
+                    try:
+                        async with self.download_semaphore:
+                            if state.paused or self._closing:
+                                break
+                            state.status = "Downloading"
+                            state.error = None
+                            await recorder.run(segment_ready)
+                    except RecorderError as exc:
+                        recorder_error = exc
+                        if self._clock() - run_started >= 60:
+                            recorder_failures = 0
+                        recorder_failures += 1
+                        for file in recorder.output_files():
+                            await segment_ready(file)
+                        logger.warning(
+                            "Recorder for %s stopped unexpectedly: %s; checking live status",
+                            payload["remark"],
+                            exc,
+                        )
+                    finally:
+                        state.recorder = None
+
+                    if state.paused or self._closing:
+                        break
+                    if not await self._wait_for_stream_recovery(state, checker):
+                        if recorder_error:
+                            logger.info("Confirmed offline after recorder failure for %s", payload["remark"])
+                        break
+                    if recorder_error:
+                        retry_limit = max(1, int(self.config.get("recorder_retry_limit", 10) or 10))
+                        retry_base = max(1.0, float(self.config.get("recorder_retry_backoff", 5) or 5))
+                        if recorder_failures >= retry_limit:
+                            retry_delay = max(
+                                300.0,
+                                float(self.config.get("event_loop_interval", 30) or 30),
+                            )
+                            state.status = "Degraded"
+                            state.error = (
+                                f"Recorder failed {recorder_failures} consecutive times; "
+                                f"retrying after a {retry_delay:g}-second cooldown"
+                            )
+                            logger.error(
+                                "Recorder recovery circuit opened for %s after %s failures; cooling down %.1fs",
+                                payload["remark"],
+                                recorder_failures,
+                                retry_delay,
+                            )
+                            recorder_failures = 0
+                        else:
+                            retry_delay = min(retry_base * (2 ** (recorder_failures - 1)), 60.0)
+                            retry_delay += random.uniform(0, min(retry_base, 5.0))
+                            state.status = "Recovering"
+                            state.error = str(recorder_error)
+                        await asyncio.sleep(retry_delay)
+                        if state.paused or self._closing:
+                            break
+                        if not await self._wait_for_stream_recovery(state, checker):
+                            break
+                    else:
+                        recorder_failures = 0
+                    spec.stream_url = checker.raw_stream_url
+                    spec.headers = dict(checker.stream_headers)
+                    state.recorder = FFmpegRecorder(spec)
+                    logger.info("Resuming recording with a refreshed stream URL for %s", payload["remark"])
+            finally:
+                if checker.danmaku:
+                    await asyncio.to_thread(checker.danmaku.stop)
         except BaseException:
             for task in tuple(segment_tasks):
                 task.cancel()
@@ -367,6 +476,38 @@ class RecordingScheduler:
             await self.hooks.run_postprocessors(steps, files, context)
         state.status = "Idle"
 
+    async def _wait_for_stream_recovery(self, state: WorkerState, checker: Any) -> bool:
+        grace = max(0.0, float(self.config.get("delay", 300) or 0))
+        deadline = self._clock() + grace
+        required_offline = 1 if grace == 0 else 3
+        offline_count = 0
+        unknown_count = 0
+        checker_sleep = max(1.0, float(self.config.get("checker_sleep", 10) or 10))
+        offline_interval = 60.0 if grace > 60 else checker_sleep
+
+        while not state.paused and not self._closing:
+            state.status = "Recovering"
+            probe = await self._probe_stream(checker, is_check=False)
+            if probe.status is StreamStatus.LIVE and checker.raw_stream_url:
+                state.error = None
+                return True
+            if probe.status is StreamStatus.OFFLINE:
+                offline_count += 1
+                unknown_count = 0
+                state.status = "ConfirmingOffline"
+                state.error = None
+                if offline_count >= required_offline and self._clock() >= deadline:
+                    return False
+                await asyncio.sleep(offline_interval)
+                continue
+
+            offline_count = 0
+            unknown_count += 1
+            state.error = probe.reason or "Live status is temporarily unavailable"
+            backoff = min(checker_sleep * (2 ** min(unknown_count - 1, 4)), 60.0)
+            await asyncio.sleep(backoff + random.uniform(0, min(checker_sleep, 5.0)))
+        return False
+
     async def _download_cover(self, checker: Any, payload: dict[str, Any], stem: str) -> Path | None:
         enabled = payload["override"].get("use_live_cover", self.config.get("use_live_cover", False))
         url = getattr(checker, "live_cover_url", None)
@@ -411,7 +552,7 @@ class RecordingScheduler:
             params[key] = payload["override"].get(key, self.config.get(key))
         params["user"] = payload["override"].get("user", self.config.get("user", {}))
         params["source_url"] = context["url"]
-        delay = int(self.config.get("delay", 0) or 0)
+        delay = int(self.config.get("upload_delay", 0) or 0)
         if delay:
             state.upload_status = "Waiting"
             await asyncio.sleep(delay)

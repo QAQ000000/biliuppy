@@ -1,7 +1,11 @@
 import asyncio
+import time
 
 import biliup.common.util
 from biliup.config import config
+from biliup.engine import StreamStatus
+from biliup.platforms import bilibili as bilibili_platform
+from biliup.platforms.bilibili import Bililive
 from biliup.platforms.douyin import DouyinUtils, select_quality
 from biliup.platforms.kuaishou import Kuaishou
 from biliup.platforms.nico import Nico
@@ -22,6 +26,87 @@ class FakeResponse:
 
     def raise_for_status(self):
         return None
+
+
+async def test_bilibili_probe_distinguishes_api_failure_from_offline(monkeypatch) -> None:
+    responses = [
+        FakeResponse(payload={"code": -352, "message": "-352", "ttl": 1}),
+        FakeResponse(payload={"code": -352, "message": "-352", "ttl": 1}),
+        FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}}),
+    ]
+
+    async def fake_get(_url, **_kwargs):
+        return responses.pop(0)
+
+    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+    with config.overlay({"user": {}}):
+        checker = Bililive("demo", "https://live.bilibili.com/123")
+        failed = await checker.aprobe_stream(is_check=True)
+        offline = await checker.aprobe_stream(is_check=True)
+
+    assert failed.status is StreamStatus.UNKNOWN
+    assert "-352" in (failed.reason or "")
+    assert offline.status is StreamStatus.OFFLINE
+
+
+async def test_bilibili_probe_treats_malformed_success_as_unknown(monkeypatch) -> None:
+    async def fake_get(_url, **_kwargs):
+        return FakeResponse(payload={"code": 0, "data": {"room_info": {"live_status": 1}}})
+
+    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+    with config.overlay({"user": {}}):
+        result = await Bililive("demo", "https://live.bilibili.com/123").aprobe_stream(is_check=True)
+
+    assert result.status is StreamStatus.UNKNOWN
+    assert "missing required room fields" in (result.reason or "")
+
+
+async def test_bilibili_probe_uses_fallback_api_for_invalid_primary_response(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_get(url, **_kwargs):
+        calls.append(url)
+        if url.startswith("https://primary.example"):
+            return FakeResponse(payload={"code": 0, "data": {}})
+        return FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}})
+
+    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+    with config.overlay(
+        {
+            "user": {},
+            "bili_liveapi": "https://primary.example",
+            "bili_fallback_api": "https://fallback.example",
+        }
+    ):
+        result = await Bililive("demo", "https://live.bilibili.com/123").aprobe_stream(is_check=True)
+
+    assert result.status is StreamStatus.OFFLINE
+    assert calls == [
+        "https://primary.example/room/v1/Room/room_init",
+        "https://fallback.example/room/v1/Room/room_init",
+    ]
+
+
+async def test_bilibili_offline_room_init_skips_wbi_api(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_get(url, **_kwargs):
+        calls.append(url)
+        return FakeResponse(payload={"code": 0, "data": {"live_status": 0, "room_id": 123}})
+
+    monkeypatch.setattr(bilibili_platform.client, "get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", 0)
+    with config.overlay({"user": {}}):
+        result = await Bililive("demo", "https://live.bilibili.com/123").aprobe_stream(is_check=True)
+
+    assert result.status is StreamStatus.OFFLINE
+    assert calls == ["https://api.live.bilibili.com/room/v1/Room/room_init"]
 
 
 async def test_kuaishou_cookie_is_request_scoped(monkeypatch) -> None:

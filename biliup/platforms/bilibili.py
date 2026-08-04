@@ -1,15 +1,15 @@
-import time
-import json
-import re
 import asyncio
+import json
+import time
 
 from biliup.common.util import client
 from biliup.config import config
-from . import match1, logger, wbi
 from biliup.danmaku import DanmakuClient
+from biliup.engine.status import StreamProbeResult, StreamStatus
+
 from ..engine.decorators import Plugin
 from ..engine.download import DownloadBase
-
+from . import logger, match1, wbi
 
 OFFICIAL_API = "https://api.live.bilibili.com"
 STREAM_NAME_REGEXP = r"/live-bvc/\d+/(live_[^/\.]+)"
@@ -46,6 +46,9 @@ class Bililive(DownloadBase):
         self.bili_cdn_fallback = config.get('bili_cdn_fallback', False)
 
     async def acheck_stream(self, is_check=False):
+        return (await self.aprobe_stream(is_check=is_check)).status is StreamStatus.LIVE
+
+    async def aprobe_stream(self, is_check=False) -> StreamProbeResult:
 
         if "b23.tv" in self.url:
             try:
@@ -58,7 +61,7 @@ class Bililive(DownloadBase):
                 self.url = url
             except Exception as e:
                 logger.error(f"{self.plugin_msg}: {e}")
-                return False
+                return StreamProbeResult.unknown(str(e))
 
         room_id: str = match1(self.url, r'bilibili.com/(\d+)')
         if self.bili_cookie:
@@ -75,43 +78,100 @@ class Bililive(DownloadBase):
                 logger.exception("load_cookies error")
         self.fake_headers['referer'] = self.url
 
-        if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
-            async with get_wbi_update_lock():
-                if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
-                    await self.update_wbi()
-
-        # 获取直播状态与房间标题
-        try:
-            params = {
-                "room_id": room_id,
-                "web_location": WBI_WEB_LOCATION,
-            }
-            wbi.sign(params)
-            room_info = await client.get(
-                f"{OFFICIAL_API}/xlive/web-room/v1/index/getInfoByRoom",
-                params=params,
-                headers=self.fake_headers)
-            room_info.raise_for_status()
-            room_info = room_info.json()
-        except Exception as e:
-            logger.error(f"{self.plugin_msg}: {e}", exc_info=True)
-            return False
-        if room_info['code'] != 0:
-            logger.error(f"{self.plugin_msg}: {room_info}")
-            return False
+        # room_init 不需要 WBI 签名，优先用它过滤离线房间并解析短房间号。
+        room_init_errors: list[str] = []
+        for api in dict.fromkeys(self.bili_api_list):
+            try:
+                response = await client.get(
+                    f"{api}/room/v1/Room/room_init",
+                    params={"id": room_id},
+                    headers=self.fake_headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                room_init_errors.append(f"{api}: {exc}")
+                continue
+            if not isinstance(payload, dict) or payload.get("code") != 0:
+                room_init_errors.append(
+                    f"{api}: code {payload.get('code') if isinstance(payload, dict) else 'invalid'}"
+                )
+                continue
+            room_init = payload.get("data")
+            if not isinstance(room_init, dict) or "live_status" not in room_init:
+                room_init_errors.append(f"{api}: response did not contain a valid room status")
+                continue
+            if room_init["live_status"] != 1:
+                logger.debug(f"{self.plugin_msg}: 未开播")
+                self.raw_stream_url = None
+                return StreamProbeResult.offline()
+            room_id = str(room_init.get("room_id") or room_id)
+            break
         else:
-            room_info = room_info['data']
-        if room_info['room_info']['live_status'] != 1:
+            logger.warning(
+                f"{self.plugin_msg}: room_init failed; falling back to detailed API: "
+                + "; ".join(room_init_errors)
+            )
+
+        try:
+            if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
+                async with get_wbi_update_lock():
+                    if int(time.time()) - wbi.last_update >= wbi.UPDATE_INTERVAL:
+                        await self.update_wbi()
+        except Exception as exc:
+            return StreamProbeResult.unknown(f"Bilibili WBI update failed: {type(exc).__name__}")
+
+        # 获取直播状态与房间标题。业务错误和网络故障都会尝试备用 API。
+        params = {
+            "room_id": room_id,
+            "web_location": WBI_WEB_LOCATION,
+        }
+        wbi.sign(params)
+        room_info = None
+        probe_errors: list[str] = []
+        for api in dict.fromkeys(self.bili_api_list):
+            try:
+                response = await client.get(
+                    f"{api}/xlive/web-room/v1/index/getInfoByRoom",
+                    params=params,
+                    headers=self.fake_headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                probe_errors.append(f"{api}: {exc}")
+                logger.warning(f"{self.plugin_msg}: room API failed via {api}: {exc}")
+                continue
+            if payload.get("code") != 0:
+                message = f"code {payload.get('code')}: {payload.get('message', '')}"
+                probe_errors.append(f"{api}: {message}")
+                logger.error(f"{self.plugin_msg}: {payload}")
+                continue
+            candidate = payload.get("data")
+            room = candidate.get("room_info") if isinstance(candidate, dict) else None
+            required_live_fields = {"cover", "title", "room_id", "uid", "live_start_time", "special_type"}
+            if not isinstance(room, dict) or "live_status" not in room:
+                probe_errors.append(f"{api}: response did not contain a valid room status")
+                continue
+            if room["live_status"] == 1 and not required_live_fields.issubset(room):
+                probe_errors.append(f"{api}: live response is missing required room fields")
+                continue
+            room_info = candidate
+            break
+        if room_info is None:
+            return StreamProbeResult.unknown("; ".join(probe_errors) or "Bilibili room API failed")
+        room = room_info["room_info"]
+        if room['live_status'] != 1:
             logger.debug(f"{self.plugin_msg}: 未开播")
             self.raw_stream_url = None
-            return False
+            return StreamProbeResult.offline()
 
-        self.live_cover_url = room_info['room_info']['cover']
-        self.room_title = room_info['room_info']['title']
-        self.__real_room_id = room_info['room_info']['room_id']
-        self.__anchor_mid = room_info['room_info']['uid']
-        live_start_time = room_info['room_info']['live_start_time']
-        special_type = room_info['room_info']['special_type'] # 0: 公开直播, 1: 付费直播, 199: 纯净页面
+        self.live_cover_url = room['cover']
+        self.room_title = room['title']
+        self.__real_room_id = room['room_id']
+        self.__anchor_mid = room['uid']
+        live_start_time = room['live_start_time']
+        special_type = room['special_type'] # 0: 公开直播, 1: 付费直播, 199: 纯净页面
         if live_start_time > self.live_start_time:
             self.live_start_time = live_start_time
             is_new_live = True
@@ -119,7 +179,7 @@ class Bililive(DownloadBase):
             is_new_live = False
 
         if is_check:
-            return True
+            return StreamProbeResult.live()
         else:
             self.__login_mid = await self.check_login_status()
 
@@ -131,7 +191,7 @@ class Bililive(DownloadBase):
             url = await self.acheck_url_healthy(self.raw_stream_url)
             if url is not None:
                 logger.debug(f"{self.plugin_msg}: 复用 {url}")
-                return True
+                return StreamProbeResult.live()
             else:
                 self.raw_stream_url = None
 
@@ -141,13 +201,16 @@ class Bililive(DownloadBase):
             if self.bili_protocol == 'hls_fmp4':
                 if int(time.time()) - live_start_time <= self.bili_hls_timeout:
                     logger.warning(f"{self.plugin_msg}: 暂未提供 hls_fmp4 流，等待下一次检测")
-                    return False
+                    return StreamProbeResult.unknown("Bilibili has not provided an hls_fmp4 stream yet")
                 else:
                     # 回退首个可用格式
                     stream_urls = await self.aget_stream(self.bili_qn, 'stream', special_type)
             else:
                 logger.error(f"{self.plugin_msg}: 获取{self.bili_protocol}流失败")
-                return False
+                return StreamProbeResult.unknown(f"Failed to obtain Bilibili {self.bili_protocol} stream")
+
+        if not stream_urls:
+            return StreamProbeResult.unknown("Bilibili returned no recordable stream")
 
         target_quality_stream = stream_urls.get(
             self.bili_qn, next(iter(stream_urls.values()))
@@ -186,11 +249,11 @@ class Bililive(DownloadBase):
                 else:
                     logger.error(f"{self.plugin_msg}: 所有 cdn 均不可用")
                     self.raw_stream_url = None
-                    return False
+                    return StreamProbeResult.unknown("All Bilibili CDN stream URLs are unavailable")
             else:
                 self.raw_stream_url = __url
 
-        return True
+        return StreamProbeResult.live()
 
     def danmaku_init(self, filename_prefix=None):
         if self.bilibili_danmaku:
