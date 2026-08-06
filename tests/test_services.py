@@ -1191,12 +1191,17 @@ async def test_scheduler_resumes_interrupted_stream_as_one_history_record(tmp_pa
 
         async def aprobe_stream(self, is_check=False):
             self.probes += 1
-            if self.probes == 1:
+            if self.probes <= 2:
                 self.raw_stream_url = "https://example.invalid/live-2.flv"
                 return StreamProbeResult.live()
             return StreamProbeResult.offline()
 
+    async def immediate_sleep(_delay):
+        return None
+
     monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", RecoveringRecorder)
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", immediate_sleep)
+    monkeypatch.setattr("biliup.services.scheduler.random.uniform", lambda _start, _end: 0)
     await scheduler._record_active(WorkerState(streamer_id=7), scheduler_payload(), RecoveringChecker())
 
     assert stream_urls == [
@@ -1351,4 +1356,84 @@ async def test_recorder_failures_back_off_and_open_circuit(tmp_path: Path, monke
             "retry-1.mp4",
             "retry-2.mp4",
         ]
+    database.dispose()
+
+
+async def test_clean_recorder_exit_uses_failure_backoff_while_still_live(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore(
+            {
+                "filtering_threshold": 0,
+                "delay": 0,
+                "recorder_retry_limit": 1,
+                "recorder_retry_backoff": 1,
+            }
+        ),
+        enabled=False,
+    )
+    sleeps: list[float] = []
+
+    class CleanExitRecorder:
+        def __init__(self, spec):
+            self.file = spec.output_dir / "clean-exit.mp4"
+
+        def prepare_stem(self):
+            return "clean-exit"
+
+        async def run(self, callback):
+            self.file.write_bytes(b"complete fragment")
+            await callback(self.file)
+
+        async def stop(self):
+            return None
+
+    class LiveThenOfflineChecker(SchedulerChecker):
+        def __init__(self):
+            self.probes = 0
+            self.raw_stream_url = "https://example.invalid/live.flv"
+
+        async def aprobe_stream(self, is_check=False):
+            self.probes += 1
+            return StreamProbeResult.live() if self.probes == 1 else StreamProbeResult.offline()
+
+    async def immediate_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", CleanExitRecorder)
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", immediate_sleep)
+    await scheduler._record_active(
+        WorkerState(streamer_id=7),
+        scheduler_payload(),
+        LiveThenOfflineChecker(),
+    )
+
+    assert sleeps == [300]
+    with database.session_factory() as session:
+        assert session.query(StreamerInfo).count() == 1
+    database.dispose()
+
+
+async def test_unrecordable_probe_stops_stream_recovery(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(database, paths, ConfigStore({"delay": 60}), enabled=False)
+    state = WorkerState(streamer_id=7)
+
+    class RestrictedChecker(SchedulerChecker):
+        async def aprobe_stream(self, is_check=False):
+            return StreamProbeResult.unrecordable("DRM protected")
+
+    recovered = await scheduler._wait_for_stream_recovery(state, RestrictedChecker())
+
+    assert recovered is False
+    assert state.status == "Unrecordable"
+    assert state.monitor_error == "DRM protected"
     database.dispose()

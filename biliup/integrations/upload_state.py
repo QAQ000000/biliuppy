@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -17,6 +18,7 @@ from biliup.database.models import UploadAccountState, UploadPartCache
 from biliup.database.session import Database
 
 T = TypeVar("T")
+logger = logging.getLogger("biliup.upload_state")
 _submit_locks: dict[str, threading.Lock] = {}
 _submit_locks_guard = threading.Lock()
 
@@ -172,5 +174,11 @@ class UploadStateStore:
             )
             def save_submission_time(session) -> None:
                 session.execute(statement)
-            self.database.run_write(save_submission_time)
+            try:
+                self.database.run_write(save_submission_time)
+            except Exception:
+                logger.exception(
+                    "Submission succeeded but its local timestamp could not be saved account=%s",
+                    self.account_key,
+                )
             return result

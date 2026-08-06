@@ -1,4 +1,6 @@
+import asyncio
 import json
+from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import ANY
@@ -8,9 +10,11 @@ import pytest
 import requests
 
 from biliup.engine.decorators import Plugin
+from biliup.engine.upload import UploadBase
 from biliup.integrations.upload_errors import is_transient_upload_error
 from biliup.integrations.uploaders.bili_web import (
     BiliBili,
+    BiliWeb,
     Data,
     UploadProgress,
     build_web_payload,
@@ -501,3 +505,90 @@ async def test_upload_accepts_success_on_final_retry(monkeypatch) -> None:
     await BiliBili._upload({}, BytesIO(b"video"), 5, eventually_succeeds, tasks=1)
 
     assert attempts == 4
+
+
+async def test_upload_cancels_sibling_workers_before_session_closes(monkeypatch) -> None:
+    blocked_started = asyncio.Event()
+    blocked_finished = 0
+    session_closed = False
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            nonlocal session_closed
+            assert blocked_finished == 2
+            session_closed = True
+
+    async def one_failure_two_blocked(_session, _chunk, params):
+        nonlocal blocked_finished
+        if params["chunk"] == 0:
+            await blocked_started.wait()
+            raise ValueError("terminal chunk failure")
+        blocked_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            blocked_finished += 1
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.aiohttp.ClientSession", FakeSession)
+
+    with pytest.raises(ValueError, match="terminal chunk failure"):
+        await BiliBili._upload({}, BytesIO(b"abc"), 1, one_failure_two_blocked, tasks=3)
+
+    assert session_closed is True
+
+
+def test_submission_success_survives_part_cache_cleanup_failure(tmp_path: Path, monkeypatch, caplog) -> None:
+    video = tmp_path / "sample.mp4"
+    video.write_bytes(b"video")
+
+    class FailingCleanupState:
+        def account_guard(self):
+            return nullcontext()
+
+        def find_part(self, _path):
+            return None
+
+        def save_part(self, _path, _part):
+            return None
+
+        def submit(self, callback, _minimum_interval):
+            return callback()
+
+        def remove_parts(self, _paths):
+            raise OSError("database unavailable")
+
+    class FakeBiliBili:
+        def __init__(self, video_data, **_kwargs):
+            self.video = video_data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def login(self, *_args, **_kwargs):
+            return None
+
+        def upload_file(self, path, _lines, _threads):
+            return {"title": Path(path).stem, "filename": "remote-part", "desc": ""}
+
+        def submit(self, _submit_api):
+            return {"code": 0, "data": {"aid": 123, "bvid": "BV123"}}
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.BiliBili", FakeBiliBili)
+    uploader = BiliWeb(
+        principal="demo",
+        data={"name": "demo", "format_title": "title", "url": "https://example.invalid/live"},
+        user={},
+        upload_state=FailingCleanupState(),
+    )
+
+    with caplog.at_level("ERROR", logger="biliup"):
+        result = uploader.upload([UploadBase.FileInfo(str(video), None)])
+
+    assert result == {"code": 0, "data": {"aid": 123, "bvid": "BV123"}}
+    assert "本地已上传分P缓存清理失败" in caplog.text

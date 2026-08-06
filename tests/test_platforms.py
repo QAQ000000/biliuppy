@@ -268,6 +268,194 @@ async def test_bilibili_probe_uses_fallback_for_non_object_detail_response(monke
     ]
 
 
+@pytest.mark.parametrize(
+    ("room_init_flags", "room_special_type", "reason"),
+    [
+        ({"encrypted": True}, 0, "password protected"),
+        ({"is_sp": 1}, 0, "paid or DRM protected"),
+        ({}, 1, "paid or DRM protected"),
+    ],
+)
+async def test_bilibili_probe_classifies_confirmed_unrecordable_rooms(
+    monkeypatch,
+    room_init_flags,
+    room_special_type,
+    reason,
+) -> None:
+    async def fake_get(url, **_kwargs):
+        if url.endswith("/room/v1/Room/room_init"):
+            return FakeResponse(
+                payload={
+                    "code": 0,
+                    "data": {
+                        "live_status": 1,
+                        "room_id": 123,
+                        **room_init_flags,
+                    },
+                }
+            )
+        return FakeResponse(
+            payload={
+                "code": 0,
+                "data": {
+                    "room_info": {
+                        "live_status": 1,
+                        "cover": "cover.jpg",
+                        "title": "restricted live",
+                        "room_id": 123,
+                        "uid": 456,
+                        "live_start_time": 100,
+                        "special_type": room_special_type,
+                    }
+                },
+            }
+        )
+
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+    with config.overlay(
+        {
+            "user": {},
+            "bili_liveapi": "https://primary.example",
+            "bili_fallback_api": "https://primary.example",
+        }
+    ):
+        result = await Bililive("demo", "https://live.bilibili.com/123").aprobe_stream()
+
+    assert result.status is StreamStatus.UNRECORDABLE
+    assert reason in (result.reason or "")
+
+
+@pytest.mark.parametrize(
+    ("special_types", "reason"),
+    [
+        ([203], "DRM protected"),
+        ([], "no stream accessible"),
+    ],
+)
+async def test_bilibili_probe_classifies_play_info_restrictions(
+    monkeypatch,
+    special_types,
+    reason,
+) -> None:
+    async def fake_get(url, **_kwargs):
+        if url.endswith("/room/v1/Room/room_init"):
+            return FakeResponse(payload={"code": 0, "data": {"live_status": 1, "room_id": 123}})
+        return FakeResponse(
+            payload={
+                "code": 0,
+                "data": {
+                    "room_info": {
+                        "live_status": 1,
+                        "cover": "cover.jpg",
+                        "title": "restricted live",
+                        "room_id": 123,
+                        "uid": 456,
+                        "live_start_time": 100,
+                        "special_type": 0,
+                    }
+                },
+            }
+        )
+
+    async def no_login():
+        return 0
+
+    async def restricted_play_info(_api, _qn):
+        return {
+            "all_special_types": special_types,
+            "playurl_info": {"playurl": {"stream": []}},
+        }
+
+    monkeypatch.setattr(bilibili_platform, "_bilibili_get", fake_get)
+    monkeypatch.setattr(bilibili_platform.wbi, "key", "a" * 32)
+    monkeypatch.setattr(bilibili_platform.wbi, "last_update", int(time.time()))
+    with config.overlay(
+        {
+            "user": {},
+            "bili_liveapi": "https://primary.example",
+            "bili_fallback_api": "https://primary.example",
+        }
+    ):
+        checker = Bililive("demo", "https://live.bilibili.com/123")
+        monkeypatch.setattr(checker, "check_login_status", no_login)
+        monkeypatch.setattr(checker, "get_play_info", restricted_play_info)
+        result = await checker.aprobe_stream()
+
+    assert result.status is StreamStatus.UNRECORDABLE
+    assert reason in (result.reason or "")
+
+
+@pytest.mark.parametrize(
+    "restricted_play_info",
+    [
+        {"all_special_types": [], "playurl_info": {"playurl": {}}},
+        {"all_special_types": [203], "playurl_info": {"playurl": {"stream": []}}},
+    ],
+)
+async def test_bilibili_stream_fallback_clears_restriction_from_failed_api(
+    monkeypatch,
+    restricted_play_info,
+) -> None:
+    checker = Bililive("demo", "https://live.bilibili.com/123")
+    checker.bili_api_list = ["https://restricted.example", "https://available.example"]
+
+    async def fallback_play_info(api, _qn):
+        if api == "https://restricted.example":
+            return restricted_play_info
+        return {
+            "all_special_types": [],
+            "playurl_info": {
+                "playurl": {
+                    "stream": [
+                        {
+                            "format": [
+                                {
+                                    "codec": [
+                                        {
+                                            "current_qn": 10000,
+                                            "accept_qn": [10000],
+                                            "base_url": "/live.flv",
+                                            "url_info": [
+                                                {
+                                                    "host": "https://available.example",
+                                                    "extra": "?cdn=available&token=ok",
+                                                }
+                                            ],
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+        }
+
+    monkeypatch.setattr(checker, "get_play_info", fallback_play_info)
+
+    streams = await checker.aget_stream()
+
+    assert streams
+    assert checker.unrecordable_reason is None
+
+
+async def test_bilibili_malformed_play_info_remains_unknown(monkeypatch) -> None:
+    checker = Bililive("demo", "https://live.bilibili.com/123")
+    checker.bili_api_list = ["https://malformed.example"]
+
+    async def malformed_play_info(_api, _qn):
+        return {"all_special_types": [], "playurl_info": {}}
+
+    monkeypatch.setattr(checker, "get_play_info", malformed_play_info)
+
+    streams = await checker.aget_stream()
+
+    assert streams == {}
+    assert checker.unrecordable_reason is None
+
+
 async def test_bilibili_offline_batch_probe_skips_wbi_api(monkeypatch) -> None:
     calls: list[str] = []
     request_headers: list[dict] = []

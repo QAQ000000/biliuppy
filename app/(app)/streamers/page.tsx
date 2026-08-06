@@ -51,6 +51,8 @@ function renderStreamerStatus(status?: string, paused?: boolean) {
       return <Tag color="amber">确认下播中</Tag>
     case 'Degraded':
       return <Tag color="amber">检测/录制暂不可用</Tag>
+    case 'Unrecordable':
+      return <Tag color="red">直播不可录制</Tag>
     case 'OutOfSchedule':
       return <Tag color="green">非录播时间</Tag>
     case 'Error':

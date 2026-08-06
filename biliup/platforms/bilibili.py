@@ -197,11 +197,13 @@ class Bililive(DownloadBase):
         ]
         self.bili_anonymous_origin = config.get('bili_anonymous_origin', False)
         self.bili_cdn_fallback = config.get('bili_cdn_fallback', False)
+        self.unrecordable_reason = None
 
     async def acheck_stream(self, is_check=False):
         return (await self.aprobe_stream(is_check=is_check)).status is StreamStatus.LIVE
 
     async def aprobe_stream(self, is_check=False) -> StreamProbeResult:
+        self.unrecordable_reason = None
 
         if "b23.tv" in self.url:
             try:
@@ -252,6 +254,8 @@ class Bililive(DownloadBase):
                     self.raw_stream_url = None
                     return StreamProbeResult.offline()
 
+        room_init = None
+        resolved_room_init = None
         for api in room_init_apis:
             try:
                 response = await _bilibili_get(
@@ -280,6 +284,7 @@ class Bililive(DownloadBase):
                 self.raw_stream_url = None
                 return StreamProbeResult.offline()
             room_id = str(room_init.get("room_id") or room_id)
+            resolved_room_init = room_init
             break
         else:
             logger.warning(
@@ -351,6 +356,18 @@ class Bililive(DownloadBase):
         self.__anchor_mid = room['uid']
         live_start_time = room['live_start_time']
         special_type = room['special_type'] # 0: 公开直播, 1: 付费直播, 199: 纯净页面
+        if isinstance(resolved_room_init, dict) and resolved_room_init.get('encrypted'):
+            self.raw_stream_url = None
+            return StreamProbeResult.unrecordable("Bilibili live room is password protected")
+        if special_type == 1 or (
+            isinstance(resolved_room_init, dict)
+            and (
+                resolved_room_init.get('is_sp') == 1
+                or resolved_room_init.get('special_type') == 1
+            )
+        ):
+            self.raw_stream_url = None
+            return StreamProbeResult.unrecordable("Bilibili live stream is paid or DRM protected")
         if live_start_time > self.live_start_time:
             self.live_start_time = live_start_time
             is_new_live = True
@@ -376,6 +393,9 @@ class Bililive(DownloadBase):
 
 
         stream_urls = await self.aget_stream(self.bili_qn, self.bili_protocol, special_type)
+        if self.unrecordable_reason:
+            self.raw_stream_url = None
+            return StreamProbeResult.unrecordable(self.unrecordable_reason)
         if not stream_urls:
             if self.bili_protocol == 'hls_fmp4':
                 if int(time.time()) - live_start_time <= self.bili_hls_timeout:
@@ -384,6 +404,9 @@ class Bililive(DownloadBase):
                 else:
                     # 回退首个可用格式
                     stream_urls = await self.aget_stream(self.bili_qn, 'stream', special_type)
+                    if self.unrecordable_reason:
+                        self.raw_stream_url = None
+                        return StreamProbeResult.unrecordable(self.unrecordable_reason)
             else:
                 logger.error(f"{self.plugin_msg}: 获取{self.bili_protocol}流失败")
                 return StreamProbeResult.unknown(f"Failed to obtain Bilibili {self.bili_protocol} stream")
@@ -515,12 +538,34 @@ class Bililive(DownloadBase):
         :return: 流信息
         """
         stream_urls = {}
+        restriction_reason = None
+        saw_accessible_play_info = False
         for api in self.bili_api_list:
             play_info = await self.get_play_info(api, qn)
-            if not play_info or check_areablock(play_info):
+            if not play_info:
                 # logger.error(f"{self.plugin_msg}: {api} 返回内容错误: {play_info}")
                 continue
-            streams = play_info['playurl_info']['playurl']['stream']
+            special_types = play_info.get('all_special_types') or []
+            if 203 in special_types:
+                restriction_reason = "Bilibili live stream is DRM protected"
+                continue
+            playurl_info = play_info.get('playurl_info')
+            if not isinstance(playurl_info, dict):
+                continue
+            playurl = playurl_info.get('playurl')
+            if not isinstance(playurl, dict):
+                continue
+            if not playurl:
+                check_areablock(play_info)
+                restriction_reason = "Bilibili live stream is unavailable in this region"
+                continue
+            streams = playurl.get('stream')
+            if not isinstance(streams, list):
+                continue
+            if not streams:
+                restriction_reason = "Bilibili returned no stream accessible to this account"
+                continue
+            saw_accessible_play_info = True
             if protocol == 'hls_fmp4':
                 if self.bili_anonymous_origin:
                     if special_type in play_info['all_special_types'] and not self.__login_mid:
@@ -540,7 +585,10 @@ class Bililive(DownloadBase):
             else:
                 stream_urls = self.parse_stream_url(streams[0]['format'][0]['codec'][0])
             if stream_urls:
+                self.unrecordable_reason = None
                 break
+        if not stream_urls and not saw_accessible_play_info and restriction_reason:
+            self.unrecordable_reason = restriction_reason
         # 空字典照常返回，重试交给上层方法处理
         return stream_urls
 

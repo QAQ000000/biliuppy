@@ -256,6 +256,14 @@ class RecordingScheduler:
                     if state.paused:
                         state.status = "Paused"
                     unknown_failures = 0
+                elif probe.status is StreamStatus.UNRECORDABLE:
+                    unknown_failures = 0
+                    state.status = "Unrecordable"
+                    state.monitor_error = probe.reason or "Live stream is not recordable"
+                    await self._sleep_until_next_check(
+                        state,
+                        float(self.config.get("event_loop_interval", 30)),
+                    )
                 elif probe.status is StreamStatus.UNKNOWN:
                     unknown_failures += 1
                     state.status = "Degraded"
@@ -456,6 +464,17 @@ class RecordingScheduler:
                             state.status = "Downloading"
                             state.monitor_error = None
                             await recorder.run(segment_ready)
+                            if not state.paused and not self._closing:
+                                recorder_error = RecorderError(
+                                    "FFmpeg exited before the stream was confirmed offline"
+                                )
+                                if self._clock() - run_started >= 60:
+                                    recorder_failures = 0
+                                recorder_failures += 1
+                                logger.warning(
+                                    "Recorder for %s exited cleanly; checking live status",
+                                    payload["remark"],
+                                )
                     except RecorderStorageError as exc:
                         storage_error = exc
                         for file in recorder.output_files():
@@ -610,6 +629,10 @@ class RecordingScheduler:
             if probe.status is StreamStatus.LIVE and checker.raw_stream_url:
                 state.monitor_error = None
                 return True
+            if probe.status is StreamStatus.UNRECORDABLE:
+                state.status = "Unrecordable"
+                state.monitor_error = probe.reason or "Live stream is not recordable"
+                return False
             if probe.status is StreamStatus.OFFLINE:
                 offline_count += 1
                 unknown_count = 0

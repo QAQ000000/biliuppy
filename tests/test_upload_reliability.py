@@ -103,6 +103,32 @@ def test_account_submit_gate_defers_without_sleeping(tmp_path: Path) -> None:
     database.dispose()
 
 
+def test_submission_success_survives_timestamp_persistence_failure(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    database = Database(tmp_path / "data.sqlite3")
+    database.migrate()
+    store = UploadStateStore(database, "mid:1")
+    submitted = 0
+
+    def submit() -> str:
+        nonlocal submitted
+        submitted += 1
+        return "remote-success"
+
+    monkeypatch.setattr(database, "run_write", lambda _operation: (_ for _ in ()).throw(OSError("disk full")))
+
+    with caplog.at_level("ERROR", logger="biliup.upload_state"):
+        result = store.submit(submit, 0)
+
+    assert result == "remote-success"
+    assert submitted == 1
+    assert "Submission succeeded but its local timestamp could not be saved" in caplog.text
+    database.dispose()
+
+
 def test_database_uses_wal_and_retries_busy_writes(tmp_path: Path) -> None:
     database = Database(tmp_path / "data.sqlite3")
     database.migrate()

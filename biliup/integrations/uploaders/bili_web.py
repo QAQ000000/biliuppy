@@ -275,7 +275,10 @@ class BiliWeb(UploadBase):
             else:
                 ret = bili.submit(self.submit_api)
             if self.upload_state:
-                self.upload_state.remove_parts([file.video for file in file_list])
+                try:
+                    self.upload_state.remove_parts([file.video for file in file_list])
+                except Exception:
+                    logger.exception("投稿成功，但本地已上传分P缓存清理失败")
         result_data = ret.get('data') or {}
         logger.info(
             "投稿成功 code=%s aid=%s bvid=%s",
@@ -932,7 +935,14 @@ class BiliBili:
                     ) from last_error
 
         async with aiohttp.ClientSession() as session:
-            await asyncio.gather(*[upload_chunk() for _ in range(tasks)])
+            workers = [asyncio.create_task(upload_chunk()) for _ in range(tasks)]
+            try:
+                await asyncio.gather(*workers)
+            finally:
+                for worker in workers:
+                    if not worker.done():
+                        worker.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
 
     def submit(self, submit_api: Optional[str] = 'web'):
         if not self.video.title:
