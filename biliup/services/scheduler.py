@@ -77,11 +77,22 @@ class WorkerState:
     status: str = "Pending"
     upload_status: str = "Idle"
     paused: bool = False
-    error: str | None = None
+    monitor_error: str | None = None
+    upload_error: str | None = None
+    capture_active: bool = False
     task: asyncio.Task[None] | None = field(default=None, repr=False)
     recording_task: asyncio.Task[None] | None = field(default=None, repr=False)
     recorder: FFmpegRecorder | None = field(default=None, repr=False)
     wake_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    transition_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+
+    @property
+    def error(self) -> str | None:
+        return self.upload_error or self.monitor_error
+
+    @error.setter
+    def error(self, value: str | None) -> None:
+        self.monitor_error = value
 
 
 class RecordingScheduler:
@@ -162,22 +173,36 @@ class RecordingScheduler:
             state.task.cancel()
             await asyncio.gather(state.task, return_exceptions=True)
 
+    async def set_paused(self, streamer_id: int, paused: bool) -> WorkerState:
+        state = self.workers.get(streamer_id)
+        if state is None:
+            raise KeyError(streamer_id)
+        async with state.transition_lock:
+            return await self._set_paused_locked(state, paused)
+
     async def toggle_pause(self, streamer_id: int) -> WorkerState:
         state = self.workers.get(streamer_id)
         if state is None:
             raise KeyError(streamer_id)
-        state.paused = not state.paused
-        state.status = "Paused" if state.paused else "Checking"
-        if state.paused:
-            if state.recorder:
-                await state.recorder.stop()
-            if state.recording_task and not state.recording_task.done():
-                state.recording_task.cancel()
-                await asyncio.gather(state.recording_task, return_exceptions=True)
+        async with state.transition_lock:
+            return await self._set_paused_locked(state, not state.paused)
+
+    @staticmethod
+    async def _set_paused_locked(state: WorkerState, paused: bool) -> WorkerState:
+        if state.paused == paused:
+            return state
+        state.paused = paused
+        state.status = "Paused" if paused else "Checking"
+        if paused:
+            if state.capture_active:
+                if state.recorder:
+                    await state.recorder.stop()
+                if state.capture_active and state.recording_task and not state.recording_task.done():
+                    state.recording_task.cancel()
+                    await asyncio.gather(state.recording_task, return_exceptions=True)
             state.status = "Paused"
         else:
-            if state.upload_status != "Error":
-                state.error = None
+            state.monitor_error = None
             state.wake_event.set()
         return state
 
@@ -234,7 +259,7 @@ class RecordingScheduler:
                 elif probe.status is StreamStatus.UNKNOWN:
                     unknown_failures += 1
                     state.status = "Degraded"
-                    state.error = probe.reason or "Live status is temporarily unavailable"
+                    state.monitor_error = probe.reason or "Live status is temporarily unavailable"
                     base = max(1.0, float(self.config.get("event_loop_interval", 30) or 30))
                     ceiling = max(base, 300.0)
                     backoff = min(base * (2 ** min(unknown_failures - 1, 4)), ceiling)
@@ -243,7 +268,7 @@ class RecordingScheduler:
                 else:
                     unknown_failures = 0
                     state.status = "Idle"
-                    state.error = None
+                    state.monitor_error = None
                     await self._sleep_until_next_check(
                         state,
                         float(self.config.get("event_loop_interval", 30)),
@@ -252,7 +277,7 @@ class RecordingScheduler:
                 raise
             except Exception as exc:
                 state.status = "Error"
-                state.error = str(exc)
+                state.monitor_error = str(exc)
                 logger.exception("Streamer %s monitor failed", state.streamer_id)
                 await self._sleep_until_next_check(
                     state,
@@ -314,7 +339,7 @@ class RecordingScheduler:
             return
         if error := self._disk_space_error():
             state.status = "Degraded"
-            state.error = error
+            state.monitor_error = error
             logger.error("Recording blocked for %s: %s", payload["remark"], error)
             await asyncio.sleep(max(1.0, float(self.config.get("event_loop_interval", 30) or 30)))
             return
@@ -403,6 +428,10 @@ class RecordingScheduler:
             else:
                 await self.hooks.run_commands(payload["segment_processor"], {**context, "file": str(file)})
 
+        if state.paused or self._closing:
+            state.status = "Paused" if state.paused else state.status
+            return
+        state.capture_active = True
         try:
             state.recorder = FFmpegRecorder(spec)
             stem = state.recorder.prepare_stem()
@@ -425,14 +454,14 @@ class RecordingScheduler:
                             if state.paused or self._closing:
                                 break
                             state.status = "Downloading"
-                            state.error = None
+                            state.monitor_error = None
                             await recorder.run(segment_ready)
                     except RecorderStorageError as exc:
                         storage_error = exc
                         for file in recorder.output_files():
                             await segment_ready(file)
                         state.status = "Degraded"
-                        state.error = str(exc)
+                        state.monitor_error = str(exc)
                         logger.error("Recording stopped for %s: %s", payload["remark"], exc)
                     except RecorderError as exc:
                         recorder_error = exc
@@ -466,7 +495,7 @@ class RecordingScheduler:
                                 float(self.config.get("event_loop_interval", 30) or 30),
                             )
                             state.status = "Degraded"
-                            state.error = (
+                            state.monitor_error = (
                                 f"Recorder failed {recorder_failures} consecutive times; "
                                 f"retrying after a {retry_delay:g}-second cooldown"
                             )
@@ -481,7 +510,7 @@ class RecordingScheduler:
                             retry_delay = min(retry_base * (2 ** (recorder_failures - 1)), 60.0)
                             retry_delay += random.uniform(0, min(retry_base, 5.0))
                             state.status = "Recovering"
-                            state.error = str(recorder_error)
+                            state.monitor_error = str(recorder_error)
                         await asyncio.sleep(retry_delay)
                         if state.paused or self._closing:
                             break
@@ -503,21 +532,21 @@ class RecordingScheduler:
             raise
         finally:
             state.recorder = None
+            state.capture_active = False
 
         while segment_tasks:
             await asyncio.gather(*tuple(segment_tasks), return_exceptions=True)
         if segment_error:
             raise segment_error
-        if state.paused or self._closing:
-            state.status = "Paused" if state.paused else state.status
+        if self._closing:
             return
         if not files:
             if error := self._disk_space_error():
                 state.status = "Degraded"
-                state.error = error
+                state.monitor_error = error
             else:
-                state.status = "Idle"
-                state.error = None
+                state.status = "Paused" if state.paused else "Idle"
+                state.monitor_error = None
             return
 
         with self.database.session_factory.begin() as session:
@@ -558,11 +587,10 @@ class RecordingScheduler:
             await self.hooks.run_postprocessors(payload["postprocessor"], files, context)
         if error := self._disk_space_error():
             state.status = "Degraded"
-            state.error = error
+            state.monitor_error = error
         else:
-            state.status = "Idle"
-            if state.upload_status != "Error":
-                state.error = None
+            state.status = "Paused" if state.paused else "Idle"
+            state.monitor_error = None
 
     async def _wait_for_stream_recovery(self, state: WorkerState, checker: Any) -> bool:
         grace = max(0.0, float(self.config.get("delay", 60) or 0))
@@ -580,13 +608,13 @@ class RecordingScheduler:
             state.status = "Recovering"
             probe = await self._probe_stream(checker, is_check=False)
             if probe.status is StreamStatus.LIVE and checker.raw_stream_url:
-                state.error = None
+                state.monitor_error = None
                 return True
             if probe.status is StreamStatus.OFFLINE:
                 offline_count += 1
                 unknown_count = 0
                 state.status = "ConfirmingOffline"
-                state.error = None
+                state.monitor_error = None
                 if offline_count >= required_offline and self._clock() >= deadline:
                     return False
                 await asyncio.sleep(offline_interval)
@@ -594,7 +622,7 @@ class RecordingScheduler:
 
             offline_count = 0
             unknown_count += 1
-            state.error = probe.reason or "Live status is temporarily unavailable"
+            state.monitor_error = probe.reason or "Live status is temporarily unavailable"
             backoff = min(checker_sleep * (2 ** min(unknown_count - 1, 4)), 60.0)
             await asyncio.sleep(backoff + random.uniform(0, min(checker_sleep, 5.0)))
         return False
@@ -636,8 +664,8 @@ class RecordingScheduler:
             template = session.get(UploadStreamer, payload["upload_streamers_id"])
             if template is None:
                 state.upload_status = "Error"
-                state.error = "upload template not found"
-                return False
+                state.upload_error = "upload template not found"
+                return None
             params = {column.name: getattr(template, column.name) for column in template.__table__.columns}
         for key in ("submit_api", "lines", "threads"):
             params[key] = payload["override"].get(key, self.config.get(key))
@@ -648,34 +676,43 @@ class RecordingScheduler:
         params["user"] = payload["override"].get("user", self.config.get("user", {}))
         params["_database"] = self.database
         params["source_url"] = context["url"]
-        delay = int(self.config.get("upload_delay", 0) or 0)
-        if delay:
-            state.upload_status = "Waiting"
-            await asyncio.sleep(delay)
-        params["title"] = self._format_text(params.get("title") or context["room_title"], context)
-        params["description"] = self._format_text(params.get("description") or "", context)
-        if not params.get("cover_path") and context.get("live_cover_path"):
-            params["cover_path"] = context["live_cover_path"]
-        limit = max(1, int(self.config.get("max_upload_limit", 8) or 8))
-        for attempt in range(1, limit + 1):
-            state.upload_status = "Uploading"
-            try:
-                async with self.upload_semaphore:
-                    result = await upload_files([str(file) for file in files], params, self.paths)
+        try:
+            delay = int(self.config.get("upload_delay", 0) or 0)
+            if delay:
+                state.upload_status = "Waiting"
+                await asyncio.sleep(delay)
+            params["title"] = self._format_text(params.get("title") or context["room_title"], context)
+            params["description"] = self._format_text(params.get("description") or "", context)
+            if not params.get("cover_path") and context.get("live_cover_path"):
+                params["cover_path"] = context["live_cover_path"]
+            limit = max(1, int(self.config.get("max_upload_limit", 8) or 8))
+            for attempt in range(1, limit + 1):
+                state.upload_status = "Uploading"
+                try:
+                    async with self.upload_semaphore:
+                        result = await upload_files([str(file) for file in files], params, self.paths)
+                    state.upload_status = "Idle"
+                    state.upload_error = None
+                    return result
+                except Exception as exc:
+                    state.upload_status = "Error"
+                    state.upload_error = str(exc)
+                    logger.exception(
+                        "Upload attempt %s/%s failed for streamer %s",
+                        attempt,
+                        limit,
+                        state.streamer_id,
+                    )
+                    retryable = is_transient_upload_error(exc)
+                    if not retryable:
+                        logger.error("Upload error is not retryable; stopping further attempts")
+                        break
+                    if attempt < limit:
+                        await asyncio.sleep(min(2**attempt, 30))
+            return None
+        finally:
+            if state.upload_status in {"Waiting", "Uploading"}:
                 state.upload_status = "Idle"
-                state.error = None
-                return result
-            except Exception as exc:
-                state.upload_status = "Error"
-                state.error = str(exc)
-                logger.exception("Upload attempt %s/%s failed for streamer %s", attempt, limit, state.streamer_id)
-                retryable = is_transient_upload_error(exc)
-                if not retryable:
-                    logger.error("Upload error is not retryable; stopping further attempts")
-                    break
-                if attempt < limit:
-                    await asyncio.sleep(min(2**attempt, 30))
-        return None
 
     @staticmethod
     def _format_text(template: str, context: dict[str, Any]) -> str:

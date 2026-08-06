@@ -25,6 +25,10 @@ class LiveStreamerInput(BaseModel):
     excluded_keywords: list[str] | None = None
 
 
+class PauseStreamerInput(BaseModel):
+    paused: bool
+
+
 class UploadStreamerInput(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

@@ -113,10 +113,15 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
 
         streamer_id = streamer["id"]
         client.app.state.context.scheduler.workers[streamer_id] = WorkerState(streamer_id=streamer_id)
-        paused = client.put(f"/v1/streamers/{streamer_id}/pause")
+        paused = client.put(f"/v1/streamers/{streamer_id}/pause", json={"paused": True})
         assert paused.json() == {"id": streamer_id, "paused": True, "status": "Paused"}
-        resumed = client.put(f"/v1/streamers/{streamer_id}/pause")
+        paused_again = client.put(f"/v1/streamers/{streamer_id}/pause", json={"paused": True})
+        assert paused_again.json() == paused.json()
+        resumed = client.put(f"/v1/streamers/{streamer_id}/pause", json={"paused": False})
         assert resumed.json() == {"id": streamer_id, "paused": False, "status": "Checking"}
+        legacy_toggle = client.put(f"/v1/streamers/{streamer_id}/pause")
+        assert legacy_toggle.json() == {"id": streamer_id, "paused": True, "status": "Paused"}
+        assert client.put(f"/v1/streamers/{streamer_id}/pause", json={}).status_code == 422
         assert client.put("/v1/streamers/999999/pause").status_code == 404
 
         template = client.post(

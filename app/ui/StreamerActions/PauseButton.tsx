@@ -12,8 +12,12 @@ interface PauseButtonProps {
 }
 
 // 暂停/恢复主播
-export const pauseStreamer = async (url: string) => {
-    return proxy(url, {method: 'PUT'});
+export const pauseStreamer = async (url: string, {arg}: {arg: boolean}) => {
+    return proxy(url, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({paused: arg}),
+    });
 };
 
 export const PauseButton: React.FC<PauseButtonProps> = ({
@@ -30,7 +34,7 @@ export const PauseButton: React.FC<PauseButtonProps> = ({
 
     const handlePause = async () => {
         try {
-            await pauseTrigger();
+            await pauseTrigger(!streamer.paused);
             // 重新加载列表数据
             await mutate('/v1/streamers');
             onSuccess?.();

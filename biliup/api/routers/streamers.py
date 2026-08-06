@@ -9,7 +9,7 @@ from biliup.database.models import LiveStreamer
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session
-from ..schemas import LiveStreamerInput, orm_dict
+from ..schemas import LiveStreamerInput, PauseStreamerInput, orm_dict
 
 router = APIRouter()
 
@@ -86,9 +86,16 @@ async def delete_streamer(
 
 
 @router.put("/v1/streamers/{streamer_id}/pause")
-async def pause_streamer(streamer_id: int, context: AppContext = Depends(get_context)) -> dict:
+async def pause_streamer(
+    streamer_id: int,
+    payload: PauseStreamerInput | None = None,
+    context: AppContext = Depends(get_context),
+) -> dict:
     try:
-        state = await context.scheduler.toggle_pause(streamer_id)
+        if payload is None:
+            state = await context.scheduler.toggle_pause(streamer_id)
+        else:
+            state = await context.scheduler.set_paused(streamer_id, payload.paused)
     except KeyError as exc:
         raise HTTPException(404, "streamer not found") from exc
     return {"id": streamer_id, "paused": state.paused, "status": state.status}

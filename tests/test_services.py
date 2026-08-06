@@ -636,12 +636,174 @@ async def test_scheduler_pause_cancels_recording_without_history_or_upload(tmp_p
     database.dispose()
 
 
+async def test_scheduler_explicit_pause_is_idempotent(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    stop_calls = 0
+
+    class CountingRecorder:
+        async def stop(self) -> None:
+            nonlocal stop_calls
+            stop_calls += 1
+
+    state = WorkerState(streamer_id=7, capture_active=True)
+    state.recorder = CountingRecorder()
+    state.recording_task = asyncio.create_task(asyncio.sleep(60))
+    scheduler.workers[state.streamer_id] = state
+
+    first, second = await asyncio.gather(
+        scheduler.set_paused(state.streamer_id, True),
+        scheduler.set_paused(state.streamer_id, True),
+    )
+
+    assert first is state
+    assert second is state
+    assert state.paused is True
+    assert state.status == "Paused"
+    assert stop_calls == 1
+    assert state.recording_task.cancelled()
+    database.dispose()
+
+
+async def test_scheduler_serializes_concurrent_pause_and_resume(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    stop_started = asyncio.Event()
+    release_stop = asyncio.Event()
+
+    class BlockingRecorder:
+        async def stop(self) -> None:
+            stop_started.set()
+            await release_stop.wait()
+
+    state = WorkerState(streamer_id=7, capture_active=True)
+    state.recorder = BlockingRecorder()
+    state.recording_task = asyncio.create_task(asyncio.sleep(60))
+    state.task = asyncio.create_task(asyncio.sleep(60))
+    scheduler.workers[state.streamer_id] = state
+
+    pause_request = asyncio.create_task(scheduler.set_paused(state.streamer_id, True))
+    await asyncio.wait_for(stop_started.wait(), timeout=1)
+    resume_request = asyncio.create_task(scheduler.set_paused(state.streamer_id, False))
+    await asyncio.sleep(0)
+    assert not resume_request.done()
+
+    release_stop.set()
+    await asyncio.gather(pause_request, resume_request)
+
+    assert state.paused is False
+    assert state.status == "Checking"
+    assert state.recording_task.cancelled()
+    assert not state.task.done()
+    state.task.cancel()
+    await asyncio.gather(state.task, return_exceptions=True)
+    database.dispose()
+
+
+async def test_scheduler_pause_during_upload_finishes_session(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    with database.session_factory.begin() as session:
+        template = UploadStreamer(template_name="default", uploader="bili_web", tags=[])
+        session.add(template)
+        session.flush()
+        template_id = template.id
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"filtering_threshold": 0, "min_free_disk_gb": 0, "delay": 0}),
+        enabled=False,
+    )
+    upload_started = asyncio.Event()
+    release_upload = asyncio.Event()
+
+    class FiniteRecorder:
+        def __init__(self, spec):
+            self.file = spec.output_dir / "complete.mp4"
+
+        def prepare_stem(self):
+            return "complete"
+
+        async def run(self, callback):
+            self.file.write_bytes(b"complete")
+            await callback(self.file)
+
+    async def blocking_upload(_files, _params, _paths):
+        upload_started.set()
+        await release_upload.wait()
+        return UploadResult(123, "BV123", "mid:1", "cookies.json")
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", FiniteRecorder)
+    monkeypatch.setattr("biliup.services.scheduler.upload_files", blocking_upload)
+    state = WorkerState(streamer_id=7)
+    task = asyncio.create_task(
+        scheduler._record_active(
+            state,
+            scheduler_payload(upload_streamers_id=template_id),
+            SchedulerChecker(),
+        )
+    )
+    state.recording_task = task
+    scheduler.workers[state.streamer_id] = state
+    await asyncio.wait_for(upload_started.wait(), timeout=1)
+
+    assert state.capture_active is False
+    await scheduler.set_paused(state.streamer_id, True)
+    assert not task.done()
+    release_upload.set()
+    await asyncio.wait_for(task, timeout=1)
+
+    assert state.paused is True
+    assert state.status == "Paused"
+    assert state.upload_status == "Idle"
+    assert state.upload_error is None
+    with database.session_factory() as session:
+        assert session.query(StreamerInfo).count() == 1
+        assert session.query(PendingSubmission).count() == 1
+    database.dispose()
+
+
+async def test_scheduler_upload_cancellation_resets_transient_status(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    with database.session_factory.begin() as session:
+        template = UploadStreamer(template_name="default", uploader="bili_web", tags=[])
+        session.add(template)
+        session.flush()
+        template_id = template.id
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"upload_delay": 60}),
+        enabled=False,
+    )
+    state = WorkerState(streamer_id=7)
+    payload = {"upload_streamers_id": template_id, "override": {}}
+    context = {"url": "https://example.invalid/room", "room_title": "title", "name": "demo", "start_time": 0}
+    task = asyncio.create_task(scheduler._upload(state, payload, context, [paths.downloads / "sample.mp4"]))
+    for _attempt in range(100):
+        if state.upload_status == "Waiting":
+            break
+        await asyncio.sleep(0.01)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert state.upload_status == "Idle"
+    database.dispose()
+
+
 async def test_scheduler_resume_starts_checking_and_clears_stale_error(tmp_path: Path) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)
     database.migrate()
     scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
-    state = WorkerState(streamer_id=7, status="Paused", paused=True, error="old error")
+    state = WorkerState(streamer_id=7, status="Paused", paused=True, monitor_error="old error")
     scheduler.workers[state.streamer_id] = state
 
     resumed = await scheduler.toggle_pause(state.streamer_id)
@@ -659,7 +821,7 @@ async def test_scheduler_pause_preserves_upload_error(tmp_path: Path) -> None:
     database = Database(paths.database)
     database.migrate()
     scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
-    state = WorkerState(streamer_id=7, status="Idle", upload_status="Error", error="upload failed")
+    state = WorkerState(streamer_id=7, status="Idle", upload_status="Error", upload_error="upload failed")
     scheduler.workers[state.streamer_id] = state
 
     await scheduler.toggle_pause(state.streamer_id)
@@ -768,6 +930,64 @@ async def test_scheduler_ignores_probe_result_after_pause(tmp_path: Path, monkey
 
     assert state.paused is True
     assert state.status == "Paused"
+    scheduler._closing = True
+    state.wake_event.set()
+    await asyncio.wait_for(state.task, timeout=1)
+    database.dispose()
+
+
+async def test_monitor_success_preserves_upload_error(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"event_loop_interval": 300}),
+        enabled=False,
+    )
+    probed = asyncio.Event()
+
+    class OfflineChecker:
+        room_title = ""
+
+        def __init__(self, *_args):
+            pass
+
+        async def aprobe_stream(self, is_check=False):
+            probed.set()
+            return StreamProbeResult.offline()
+
+        def close(self):
+            return None
+
+    payload = {
+        "url": "https://example.invalid/room",
+        "remark": "demo",
+        "format": "flv",
+        "override": {},
+        "excluded_keywords": [],
+        "time_range": None,
+    }
+    monkeypatch.setattr(scheduler, "_load_streamer", lambda _session, _streamer_id: object())
+    monkeypatch.setattr(scheduler, "_streamer_payload", lambda _streamer: payload)
+    monkeypatch.setattr("biliup.services.scheduler.Plugin.inspect_checker", lambda _url: OfflineChecker)
+    state = WorkerState(
+        streamer_id=7,
+        upload_status="Error",
+        monitor_error="temporary monitor failure",
+        upload_error="upload failed",
+    )
+    state.task = asyncio.create_task(scheduler._monitor(state))
+    scheduler.workers[state.streamer_id] = state
+    await asyncio.wait_for(probed.wait(), timeout=1)
+    for _attempt in range(100):
+        if state.status == "Idle":
+            break
+        await asyncio.sleep(0.01)
+
+    assert state.monitor_error is None
+    assert state.upload_error == "upload failed"
+    assert state.error == "upload failed"
     scheduler._closing = True
     state.wake_event.set()
     await asyncio.wait_for(state.task, timeout=1)
