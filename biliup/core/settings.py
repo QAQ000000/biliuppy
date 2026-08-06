@@ -65,7 +65,7 @@ class RecordingConfig(BaseModel):
     submit_api: str = "web"
     lines: str = "AUTO"
     threads: int = Field(default=3, ge=1, le=8)
-    delay: int = 300
+    delay: int = 60
     upload_delay: int = Field(default=0, ge=0, le=86_400)
     submit_interval: int = Field(default=60, ge=0, le=3_600)
     event_loop_interval: int = 30

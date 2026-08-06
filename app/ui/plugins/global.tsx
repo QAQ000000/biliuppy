@@ -251,10 +251,10 @@ const Global: React.FC = () => {
               <br />
               单位：秒
               <br />
-              默认延迟时间为 300 秒；期间恢复直播会刷新流地址并继续归入同一场录像。
+              默认确认时间为 60 秒；期间恢复直播会刷新流地址并继续归入同一场录像。
             </div>
           }
-          placeholder="300"
+          placeholder="60"
           suffix="s"
           style={{ width: '100%' }}
           fieldStyle={{

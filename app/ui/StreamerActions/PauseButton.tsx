@@ -46,6 +46,11 @@ export const PauseButton: React.FC<PauseButtonProps> = ({
     };
 
     return (
-        <Button onClick={handlePause} icon={streamer.status === 'Pause'? <IconPlay />: <IconPause />} theme="borderless" aria-label="暂停" />
+        <Button
+            onClick={handlePause}
+            icon={streamer.paused ? <IconPlay /> : <IconPause />}
+            theme="borderless"
+            aria-label={streamer.paused ? '恢复' : '暂停'}
+        />
     );
 };

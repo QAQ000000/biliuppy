@@ -19,6 +19,7 @@ def _response(streamer: LiveStreamer, context: AppContext) -> dict:
     worker = context.scheduler.workers.get(streamer.id)
     value["status"] = worker.status if worker else "Pending"
     value["upload_status"] = worker.upload_status if worker else "Idle"
+    value["paused"] = worker.paused if worker else False
     return value
 
 

@@ -39,7 +39,10 @@ async function loadBiliUsers(users: User[]): Promise<BiliUser[]> {
 
 
 export default function useStreamers() {
-  const { data, error, isLoading } = useSWR<LiveStreamerEntity[]>("/v1/streamers", fetcher);
+  const { data, error, isLoading } = useSWR<LiveStreamerEntity[]>("/v1/streamers", fetcher, {
+    refreshInterval: 3000,
+    refreshWhenHidden: false,
+  });
 
   return {
     isLoading,

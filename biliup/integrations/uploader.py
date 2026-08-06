@@ -164,6 +164,7 @@ def _upload_sync(
         extra_fields=params.get("extra_fields") or "",
         upload_state=upload_state,
         submit_interval=max(0, int(params.get("submit_interval") or 0)),
+        excluded_upload_lines=params.setdefault("_excluded_upload_lines", []),
     )
     file_list = [UploadBase.FileInfo(str(path), None) for path in files]
     if uploader_name == "bilibili":

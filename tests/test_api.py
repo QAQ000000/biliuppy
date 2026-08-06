@@ -79,6 +79,7 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert client.get("/healthz").json() == {"status": "ok"}
         initial_config = client.get("/v1/configuration").json()
         assert initial_config["downloader"] == "ffmpeg"
+        assert initial_config["delay"] == 60
         assert initial_config["log_file_max_size_mb"] == 10
         assert initial_config["history_max_records"] == 10_000
         assert initial_config["min_free_disk_gb"] == 5
@@ -97,6 +98,7 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         streamer = created.json()
         assert streamer["remark"] == "demo"
         assert streamer["status"] == "Pending"
+        assert streamer["paused"] is False
         assert "filename_prefix" in streamer
         assert "upload_streamers_id" in streamer
         assert "upload_status" in streamer

@@ -636,6 +636,23 @@ async def test_scheduler_pause_cancels_recording_without_history_or_upload(tmp_p
     database.dispose()
 
 
+async def test_scheduler_resume_starts_checking_and_clears_stale_error(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    state = WorkerState(streamer_id=7, status="Paused", paused=True, error="old error")
+    scheduler.workers[state.streamer_id] = state
+
+    resumed = await scheduler.toggle_pause(state.streamer_id)
+
+    assert resumed is state
+    assert state.paused is False
+    assert state.status == "Checking"
+    assert state.error is None
+    database.dispose()
+
+
 async def test_download_slot_is_released_before_upload(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)

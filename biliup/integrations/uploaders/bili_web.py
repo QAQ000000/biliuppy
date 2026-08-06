@@ -31,7 +31,6 @@ from biliup.integrations.upload_errors import UploadRejectedError
 from biliup.integrations.upload_state import UploadStateStore
 from biliup.platforms import Wbi
 
-
 WEB_UPLOAD_LOCATION = "333.1024"
 MEMBER_FIRST_DEFAULT_DURATION = 3 * 24 * 60 * 60
 
@@ -163,6 +162,7 @@ class BiliWeb(UploadBase):
         extra_fields="",
         upload_state: UploadStateStore | None = None,
         submit_interval: int = 60,
+        excluded_upload_lines: list[str] | None = None,
     ):
         """
         :param principal:
@@ -211,6 +211,7 @@ class BiliWeb(UploadBase):
         self.extra_fields = extra_fields
         self.upload_state = upload_state
         self.submit_interval = max(0, int(submit_interval))
+        self.excluded_upload_lines = excluded_upload_lines if excluded_upload_lines is not None else []
 
     def upload(
         self,
@@ -226,7 +227,7 @@ class BiliWeb(UploadBase):
         logger.info(f"开始上传视频 {database_row_id}")
         video = Data()
         video.dynamic = self.dynamic
-        with BiliBili(video) as bili:
+        with BiliBili(video, excluded_upload_lines=self.excluded_upload_lines) as bili:
             bili.app_key = self.user.get('app_key')
             bili.appsec = self.user.get('appsec')
             guard = self.upload_state.account_guard() if self.upload_state else nullcontext()
@@ -314,7 +315,7 @@ class BiliWeb(UploadBase):
             return desc_v2
 
 class BiliBili:
-    def __init__(self, video: 'Data'):
+    def __init__(self, video: 'Data', *, excluded_upload_lines: list[str] | None = None):
         self.app_key = None
         self.appsec = None
         if self.app_key is None or self.appsec is None:
@@ -334,6 +335,7 @@ class BiliBili:
         self.account = None
         self.__bili_jct = None
         self._auto_os = None
+        self.excluded_upload_lines = excluded_upload_lines if excluded_upload_lines is not None else []
         self.persistence_path = 'engine/bili.cookie'
 
     def check_tag(self, tag):
@@ -539,8 +541,58 @@ class BiliBili:
         if r and r["code"] == 0:
             return r['data']['hash'], rsa.PublicKey.load_pkcs1_openssl_pem(r['data']['key'].encode())
 
+    def _get_json_with_retry(self, url: str, *, params: dict | None = None, purpose: str) -> dict:
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                response = self.__session.get(url, params=params, timeout=5)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError(f"{purpose} response was not an object")
+                return payload
+            except (requests.RequestException, JSONDecodeError, ValueError) as error:
+                last_error = error
+                if attempt == 3:
+                    break
+                delay = min(2 ** (attempt - 1) + random.random(), 4.0)
+                logger.warning("%s失败，%.1f秒后重试 %s/3：%s", purpose, delay, attempt, error)
+                time.sleep(delay)
+        raise RuntimeError(f"{purpose} failed after 3 attempts") from last_error
+
+    @staticmethod
+    def _upload_line_key(line: dict) -> str:
+        query = str(line.get('query') or '')
+        query_params = dict(urllib.parse.parse_qsl(query))
+        endpoint = query_params.get('upcdn') or query_params.get('bucket') or query
+        return f"{line.get('os') or 'unknown'}:{endpoint}"
+
+    @staticmethod
+    def _is_upload_line_error(error: BaseException) -> bool:
+        seen: set[int] = set()
+        current: BaseException | None = error
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, (aiohttp.ClientError, asyncio.TimeoutError, requests.RequestException)):
+                return True
+            current = current.__cause__ or current.__context__
+        return False
+
+    def _exclude_failed_auto_line(self, error: BaseException, *, auto_lines: bool) -> None:
+        if not auto_lines or not self._auto_os or not self._is_upload_line_error(error):
+            return
+        failed_line = self._upload_line_key(self._auto_os)
+        if failed_line not in self.excluded_upload_lines:
+            self.excluded_upload_lines.append(failed_line)
+        logger.warning("自动上传线路 %s 失败，本次投稿后续重试将改用其他线路", failed_line)
+
     def probe(self):
-        ret = self.__session.get('https://member.bilibili.com/preupload?r=probe', timeout=5).json()
+        ret = self._get_json_with_retry(
+            'https://member.bilibili.com/preupload?r=probe',
+            purpose="获取上传线路",
+        )
+        if not isinstance(ret.get('lines'), list) or not isinstance(ret.get('probe'), dict):
+            raise RuntimeError("Bilibili upload-line response is missing required fields")
         logger.info(f"线路:{ret['lines']}")
         data, auto_os = None, None
         min_cost = 0
@@ -549,16 +601,34 @@ class BiliBili:
         else:
             method = 'post'
             data = bytes(int(1024 * 0.1 * 1024))
-        for line in ret['lines']:
+        candidates = [line for line in ret['lines'] if isinstance(line, dict) and line.get('os') == 'upos']
+        eligible = [line for line in candidates if self._upload_line_key(line) not in self.excluded_upload_lines]
+        if not eligible and candidates:
+            logger.warning("自动上传线路均在本次任务的排除列表中，将重新尝试全部候选线路")
+            self.excluded_upload_lines.clear()
+            eligible = candidates
+        last_error = None
+        for line in eligible:
+            if not line.get('probe_url') or not line.get('query'):
+                continue
             start = time.perf_counter()
-            test = self.__session.request(method, f"https:{line['probe_url']}", data=data, timeout=30)
+            try:
+                test = self.__session.request(method, f"https:{line['probe_url']}", data=data, timeout=30)
+            except requests.RequestException as error:
+                last_error = error
+                logger.warning("检测上传线路 %s 失败，跳过：%s", line['query'], error)
+                continue
             cost = time.perf_counter() - start
             logger.info('检测上传线路 %s，耗时 %.3fs', line['query'], cost)
             if test.status_code != 200:
-                return
+                last_error = RuntimeError(f"upload-line probe returned HTTP {test.status_code}")
+                logger.warning("检测上传线路 %s 返回 HTTP %s，跳过", line['query'], test.status_code)
+                continue
             if not min_cost or min_cost > cost:
                 auto_os = line
                 min_cost = cost
+        if auto_os is None:
+            raise RuntimeError("No healthy Bilibili upload line is available") from last_error
         auto_os['cost'] = min_cost
         return auto_os
 
@@ -571,6 +641,7 @@ class BiliBili:
         "probe_url":"??"}
         """
         preferred_upos_cdn = None
+        auto_lines = not lines or str(lines).upper() == 'AUTO'
         if not self._auto_os:
             if lines == 'bda':
                 self._auto_os = {"os": "upos", "query": "upcdn=bda&probe_version=20221109",
@@ -626,10 +697,15 @@ class BiliBili:
                 'name': f.name,
                 'size': total_size,
             }
-            resp = self.__session.get(
-                f"https://member.bilibili.com/preupload?{self._auto_os['query']}", params=query,
-                timeout=5)
-            ret = resp.json()
+            try:
+                ret = self._get_json_with_retry(
+                    f"https://member.bilibili.com/preupload?{self._auto_os['query']}",
+                    params=query,
+                    purpose="获取预上传信息",
+                )
+            except Exception as error:
+                self._exclude_failed_auto_line(error, auto_lines=auto_lines)
+                raise
             logger.debug(f"preupload: {ret}")
             if preferred_upos_cdn:
                 original_endpoint: str = ret['endpoint']
@@ -643,7 +719,11 @@ class BiliBili:
                         logger.error(f"Unrecognized preferred_upos_cdn: {preferred_upos_cdn}")
                 else:
                     logger.warning(f"Assigned UpOS endpoint {original_endpoint} was never seen before, something else might have changed, so will not modify it")
-            return asyncio.run(upload(f, total_size, ret, tasks=tasks))
+            try:
+                return asyncio.run(upload(f, total_size, ret, tasks=tasks))
+            except Exception as error:
+                self._exclude_failed_auto_line(error, auto_lines=auto_lines)
+                raise
 
     async def cos(self, file, total_size, ret, chunk_size=10485760, tasks=3, internal=False):
         filename = file.name

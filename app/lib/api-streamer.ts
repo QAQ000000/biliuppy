@@ -117,8 +117,9 @@ export interface LiveStreamerEntity {
 	remark: string;
 	filename_prefix?: string;
 	upload_streamers_id?: number;
-	status?: string | React.ReactNode;
+	status?: string;
 	upload_status?: string;
+	paused?: boolean;
 	format?: string;
     time_range?: string | Date[];
     excluded_keywords?: string[];

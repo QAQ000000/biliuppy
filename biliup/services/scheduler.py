@@ -166,7 +166,8 @@ class RecordingScheduler:
         if state is None:
             raise KeyError(streamer_id)
         state.paused = not state.paused
-        state.status = "Paused" if state.paused else "Pending"
+        state.status = "Paused" if state.paused else "Checking"
+        state.error = None
         if state.paused:
             if state.recorder:
                 await state.recorder.stop()
@@ -540,13 +541,16 @@ class RecordingScheduler:
                 state.error = None
 
     async def _wait_for_stream_recovery(self, state: WorkerState, checker: Any) -> bool:
-        grace = max(0.0, float(self.config.get("delay", 300) or 0))
+        grace = max(0.0, float(self.config.get("delay", 60) or 0))
         deadline = self._clock() + grace
         required_offline = 1 if grace == 0 else 3
         offline_count = 0
         unknown_count = 0
         checker_sleep = max(1.0, float(self.config.get("checker_sleep", 10) or 10))
-        offline_interval = 60.0 if grace > 60 else checker_sleep
+        offline_interval = min(
+            60.0,
+            max(checker_sleep, grace / max(1, required_offline - 1)),
+        )
 
         while not state.paused and not self._closing:
             state.status = "Recovering"

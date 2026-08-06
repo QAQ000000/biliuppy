@@ -26,6 +26,37 @@ import { LiveStreamerEntity, put, requestDelete, sendRequest } from '../../lib/a
 import useSWRMutation from 'swr/mutation'
 import { PauseButton } from '../../ui/StreamerActions/PauseButton'
 
+function renderStreamerStatus(status?: string) {
+  switch (status) {
+    case 'Working':
+    case 'Downloading':
+      return <Tag color="red">直播中</Tag>
+    case 'Idle':
+      return <Tag color="green">空闲</Tag>
+    case 'Pending':
+      return <Tag color="grey">未知</Tag>
+    case 'Pause':
+    case 'Paused':
+      return <Tag color="orange">已暂停</Tag>
+    case 'Inspecting':
+    case 'Checking':
+    case 'Waiting':
+      return <Tag color="indigo">检测/上传中</Tag>
+    case 'Recovering':
+      return <Tag color="indigo">断流恢复中</Tag>
+    case 'ConfirmingOffline':
+      return <Tag color="amber">确认下播中</Tag>
+    case 'Degraded':
+      return <Tag color="amber">检测/录制暂不可用</Tag>
+    case 'OutOfSchedule':
+      return <Tag color="green">非录播时间</Tag>
+    case 'Error':
+      return <Tag color="red">异常</Tag>
+    default:
+      return <Tag color="grey">未知</Tag>
+  }
+}
+
 export default function Home() {
   const { Header, Content } = Layout
   const { Text } = Typography
@@ -54,46 +85,9 @@ export default function Home() {
     }
     return values
   }
-  const data: LiveStreamerEntity[] | undefined = streamers?.map(live => {
-    let status
-    switch (live.status) {
-      case 'Working':
-      case 'Downloading':
-        status = <Tag color="red">直播中</Tag>
-        break
-      case 'Idle':
-        status = <Tag color="green">空闲</Tag>
-        break
-      case 'Pending':
-        status = <Tag color="grey">未知</Tag>
-        break
-      case 'Pause':
-      case 'Paused':
-        status = <Tag color="orange">已暂停</Tag>
-        break
-      case 'Inspecting':
-      case 'Checking':
-      case 'Waiting':
-        status = <Tag color="indigo">检测/上传中</Tag>
-        break
-      case 'Recovering':
-        status = <Tag color="indigo">断流恢复中</Tag>
-        break
-      case 'ConfirmingOffline':
-        status = <Tag color="amber">确认下播中</Tag>
-        break
-      case 'Degraded':
-        status = <Tag color="amber">检测/录制暂不可用</Tag>
-        break
-      case 'OutOfSchedule':
-        status = <Tag color="green">非录播时间</Tag>
-        break
-      case 'Error':
-        status = <Tag color="red">异常</Tag>
-        break
-    }
-    return { ...handleEntityPostprocessor(live), status }
-  })
+  const data: LiveStreamerEntity[] | undefined = streamers?.map(live =>
+    handleEntityPostprocessor(live)
+  )
 
   const handleOk = async (values: any) => {
     if (values?.postprocessor) {
@@ -116,6 +110,7 @@ export default function Home() {
   const handleUpdate = async (values: any) => {
     delete values.status
     delete values.upload_status
+    delete values.paused
     if (values?.postprocessor) {
       values.postprocessor = values.postprocessor.map(
         ({ cmd, value }: { cmd: string; value: string }) => (cmd === 'rm' ? 'rm' : { [cmd]: value })
@@ -234,7 +229,9 @@ export default function Home() {
                     }
                   }
                 >
-                  <div style={{ position: 'absolute', right: 20, top: 9 }}>{item.status}</div>
+                  <div style={{ position: 'absolute', right: 20, top: 9 }}>
+                    {renderStreamerStatus(item.status)}
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <h3
                       style={{

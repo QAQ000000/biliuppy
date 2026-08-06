@@ -5,6 +5,7 @@ from unittest.mock import ANY
 
 import aiohttp
 import pytest
+import requests
 
 from biliup.engine.decorators import Plugin
 from biliup.integrations.uploaders.bili_web import (
@@ -224,6 +225,187 @@ def test_cookie_store_uses_atomic_replacement(tmp_path: Path) -> None:
     assert payload["access_token"] == "access"
     assert payload["refresh_token"] == "refresh"
     assert list(tmp_path.glob(".cookies.json.*.tmp")) == []
+
+
+def test_auto_line_probe_retries_line_query_and_honors_exclusions(monkeypatch) -> None:
+    line_response = {
+        "probe": {"get": True},
+        "lines": [
+            {
+                "os": "upos",
+                "query": "upcdn=bda2&probe_version=20221109",
+                "probe_url": "//upos-cs-upcdnbda2.bilivideo.com/OK",
+            },
+            {
+                "os": "upos",
+                "query": "upcdn=bldsa&probe_version=20221109",
+                "probe_url": "//upos-cs-upcdnbldsa.bilivideo.com/OK",
+            },
+        ],
+    }
+    get_attempts = 0
+    probed_urls: list[str] = []
+    sleeps: list[float] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return line_response
+
+    class FakeSession:
+        def get(self, _url, **_kwargs):
+            nonlocal get_attempts
+            get_attempts += 1
+            if get_attempts < 3:
+                raise requests.ConnectionError("temporary failure")
+            return FakeResponse()
+
+        def request(self, _method, url, **_kwargs):
+            probed_urls.append(url)
+            return FakeResponse()
+
+    ticks = iter([10.0, 10.2])
+    excluded = ["upos:bda2"]
+    bili = BiliBili(Data(), excluded_upload_lines=excluded)
+    bili._BiliBili__session = FakeSession()
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.random.random", lambda: 0.0)
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.time.sleep", sleeps.append)
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.time.perf_counter", lambda: next(ticks))
+
+    selected = bili.probe()
+
+    assert get_attempts == 3
+    assert sleeps == [1.0, 2.0]
+    assert probed_urls == ["https://upos-cs-upcdnbldsa.bilivideo.com/OK"]
+    assert selected["query"].startswith("upcdn=bldsa")
+
+
+def test_auto_line_probe_skips_unhealthy_candidate(monkeypatch) -> None:
+    lines = [
+        {
+            "os": "upos",
+            "query": "upcdn=bda2&probe_version=20221109",
+            "probe_url": "//upos-cs-upcdnbda2.bilivideo.com/OK",
+        },
+        {
+            "os": "upos",
+            "query": "upcdn=tx&probe_version=20221109",
+            "probe_url": "//upos-cs-upcdntx.bilivideo.com/OK",
+        },
+    ]
+
+    class FakeResponse:
+        def __init__(self, status_code=200, payload=None):
+            self.status_code = status_code
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeSession:
+        def get(self, _url, **_kwargs):
+            return FakeResponse(payload={"probe": {"get": True}, "lines": lines})
+
+        def request(self, _method, url, **_kwargs):
+            return FakeResponse(status_code=500 if "bda2" in url else 200)
+
+    ticks = iter([10.0, 10.1, 20.0, 20.3])
+    bili = BiliBili(Data())
+    bili._BiliBili__session = FakeSession()
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.time.perf_counter", lambda: next(ticks))
+
+    selected = bili.probe()
+
+    assert selected["query"].startswith("upcdn=tx")
+
+
+def test_auto_upload_failure_excludes_selected_line(tmp_path: Path, monkeypatch) -> None:
+    video = tmp_path / "sample.flv"
+    video.write_bytes(b"video")
+    selected_line = {
+        "os": "upos",
+        "query": "upcdn=bda2&probe_version=20221109",
+        "probe_url": "//upos-cs-upcdnbda2.bilivideo.com/OK",
+        "cost": 0.1,
+    }
+    excluded: list[str] = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "endpoint": "//upos-cs-upcdnbda2.bilivideo.com",
+                "upos_uri": "upos://bucket/video.flv",
+                "biz_id": 1,
+                "chunk_size": 10,
+                "auth": "token",
+            }
+
+    class FakeSession:
+        def get(self, _url, **_kwargs):
+            return FakeResponse()
+
+    async def failing_upload(_file, _total_size, _ret, tasks):
+        assert tasks == 3
+        raise aiohttp.ClientConnectionError("line unavailable")
+
+    bili = BiliBili(Data(), excluded_upload_lines=excluded)
+    bili._BiliBili__session = FakeSession()
+    monkeypatch.setattr(bili, "probe", lambda: selected_line.copy())
+    monkeypatch.setattr(bili, "upos", failing_upload)
+
+    with pytest.raises(aiohttp.ClientConnectionError, match="line unavailable"):
+        bili.upload_file(str(video), lines="AUTO", tasks=3)
+
+    assert excluded == ["upos:bda2"]
+
+
+def test_auto_preupload_failure_excludes_selected_line(tmp_path: Path, monkeypatch) -> None:
+    video = tmp_path / "sample.flv"
+    video.write_bytes(b"video")
+    selected_line = {
+        "os": "upos",
+        "query": "upcdn=bda2&probe_version=20221109",
+        "probe_url": "//upos-cs-upcdnbda2.bilivideo.com/OK",
+        "cost": 0.1,
+    }
+    excluded: list[str] = []
+
+    class FakeSession:
+        def get(self, _url, **_kwargs):
+            raise requests.ConnectionError("preupload unavailable")
+
+    bili = BiliBili(Data(), excluded_upload_lines=excluded)
+    bili._BiliBili__session = FakeSession()
+    monkeypatch.setattr(bili, "probe", lambda: selected_line.copy())
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.time.sleep", lambda _delay: None)
+
+    with pytest.raises(RuntimeError, match="failed after 3 attempts"):
+        bili.upload_file(str(video), lines="AUTO", tasks=3)
+
+    assert excluded == ["upos:bda2"]
+
+
+def test_manual_upload_line_is_not_excluded_after_failure() -> None:
+    excluded: list[str] = []
+    bili = BiliBili(Data(), excluded_upload_lines=excluded)
+    bili._auto_os = {
+        "os": "upos",
+        "query": "upcdn=bda2&probe_version=20221109",
+    }
+
+    bili._exclude_failed_auto_line(aiohttp.ClientConnectionError("unavailable"), auto_lines=False)
+
+    assert excluded == []
 
 
 async def test_upload_aborts_after_final_chunk_failure(monkeypatch) -> None:
