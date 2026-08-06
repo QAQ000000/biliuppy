@@ -151,6 +151,58 @@ async def test_upload_waits_asynchronously_and_retries(tmp_path: Path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_manual_upload_retries_transient_failure_with_same_params(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    video = paths.downloads / "sample.mp4"
+    video.write_bytes(b"video")
+    attempts = 0
+    params: dict = {}
+
+    def fail_one_line_then_succeed(_files, current_params, _paths, _database):
+        nonlocal attempts
+        attempts += 1
+        excluded = current_params.setdefault("_excluded_upload_lines", [])
+        if attempts == 1:
+            excluded.append("upos:bda2")
+            raise requests.ConnectionError("line unavailable")
+        assert excluded == ["upos:bda2"]
+        return UploadResult(1, "BV1", "mid:1", "cookies.json")
+
+    async def immediate_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(uploader_module, "_upload_sync", fail_one_line_then_succeed)
+    monkeypatch.setattr("biliup.integrations.uploader.asyncio.sleep", immediate_sleep)
+
+    result = await upload_files([video.name], params, paths, max_attempts=2)
+
+    assert result == UploadResult(1, "BV1", "mid:1", "cookies.json")
+    assert attempts == 2
+    await uploader_module.shutdown_upload_executor()
+
+
+@pytest.mark.asyncio
+async def test_upload_does_not_retry_permanent_failure(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    video = paths.downloads / "sample.mp4"
+    video.write_bytes(b"video")
+    attempts = 0
+
+    def invalid_upload(_files, _params, _paths, _database):
+        nonlocal attempts
+        attempts += 1
+        raise ValueError("invalid title")
+
+    monkeypatch.setattr(uploader_module, "_upload_sync", invalid_upload)
+
+    with pytest.raises(ValueError, match="invalid title"):
+        await upload_files([video.name], {}, paths, max_attempts=3)
+
+    assert attempts == 1
+    await uploader_module.shutdown_upload_executor()
+
+
+@pytest.mark.asyncio
 async def test_running_upload_success_is_preserved_during_shutdown(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     video = paths.downloads / "sample.mp4"

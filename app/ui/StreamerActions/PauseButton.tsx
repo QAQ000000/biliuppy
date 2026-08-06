@@ -1,9 +1,9 @@
 import React from 'react';
 import { useSWRConfig } from 'swr';
 import useSWRMutation from 'swr/mutation';
-import {Button} from "@douyinfe/semi-ui";
+import {Button, Notification} from "@douyinfe/semi-ui";
 import {IconPause, IconPlay} from "@douyinfe/semi-icons";
-import {API_BASE, LiveStreamerEntity} from "@/app/lib/api-streamer";
+import {LiveStreamerEntity, proxy} from "@/app/lib/api-streamer";
 
 interface PauseButtonProps {
     streamer: LiveStreamerEntity;
@@ -13,12 +13,7 @@ interface PauseButtonProps {
 
 // 暂停/恢复主播
 export const pauseStreamer = async (url: string) => {
-    const response = await fetch(API_BASE + url,
-        {
-            method: 'PUT',
-        }
-);
-    return response;
+    return proxy(url, {method: 'PUT'});
 };
 
 export const PauseButton: React.FC<PauseButtonProps> = ({
@@ -28,7 +23,7 @@ export const PauseButton: React.FC<PauseButtonProps> = ({
                                                         }) => {
     const { mutate } = useSWRConfig();
 
-    const { trigger: pauseTrigger } = useSWRMutation(
+    const { trigger: pauseTrigger, isMutating } = useSWRMutation(
         `/v1/streamers/${streamer.id}/pause`,
         pauseStreamer
     );
@@ -41,7 +36,12 @@ export const PauseButton: React.FC<PauseButtonProps> = ({
             onSuccess?.();
         } catch (error) {
             console.error('暂停失败:', error);
-            onError?.(error as Error);
+            const requestError = error as Error;
+            if (onError) {
+                onError(requestError);
+            } else {
+                Notification.error({title: '操作失败', content: requestError.message});
+            }
         }
     };
 
@@ -51,6 +51,8 @@ export const PauseButton: React.FC<PauseButtonProps> = ({
             icon={streamer.paused ? <IconPlay /> : <IconPause />}
             theme="borderless"
             aria-label={streamer.paused ? '恢复' : '暂停'}
+            disabled={isMutating}
+            loading={isMutating}
         />
     );
 };

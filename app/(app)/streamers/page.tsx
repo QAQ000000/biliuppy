@@ -26,7 +26,10 @@ import { LiveStreamerEntity, put, requestDelete, sendRequest } from '../../lib/a
 import useSWRMutation from 'swr/mutation'
 import { PauseButton } from '../../ui/StreamerActions/PauseButton'
 
-function renderStreamerStatus(status?: string) {
+function renderStreamerStatus(status?: string, paused?: boolean) {
+  if (paused) {
+    return <Tag color="orange">已暂停</Tag>
+  }
   switch (status) {
     case 'Working':
     case 'Downloading':
@@ -230,7 +233,7 @@ export default function Home() {
                   }
                 >
                   <div style={{ position: 'absolute', right: 20, top: 9 }}>
-                    {renderStreamerStatus(item.status)}
+                    {renderStreamerStatus(item.status, item.paused)}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <h3

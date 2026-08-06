@@ -13,6 +13,7 @@ from typing import Any
 from biliup.core import AppPaths
 from biliup.database.session import Database
 from biliup.engine.upload import UploadBase
+from biliup.integrations.upload_errors import is_transient_upload_error
 from biliup.integrations.upload_state import (
     SubmitDelayError,
     UploadResult,
@@ -201,11 +202,14 @@ async def upload_files(
     params: dict[str, Any],
     paths: AppPaths | None = None,
     database: Database | None = None,
+    max_attempts: int = 1,
 ) -> UploadResult | None:
     app_paths = paths or AppPaths.discover().ensure()
     resolved = _resolve_files(files, app_paths)
     if not resolved:
         raise ValueError("No files selected")
+    transient_failures = 0
+    max_attempts = max(1, int(max_attempts))
     while True:
         executor_future = _get_upload_executor().submit(
             _upload_sync,
@@ -231,3 +235,16 @@ async def upload_files(
                     return await asyncio.shield(upload_future)
                 except asyncio.CancelledError:
                     continue
+        except Exception as exc:
+            transient_failures += 1
+            if transient_failures >= max_attempts or not is_transient_upload_error(exc):
+                raise
+            delay = min(2**transient_failures, 30)
+            logger.warning(
+                "上传线路发生暂时故障，%s 秒后切换线路重试 %s/%s：%s",
+                delay,
+                transient_failures + 1,
+                max_attempts,
+                exc,
+            )
+            await asyncio.sleep(delay)

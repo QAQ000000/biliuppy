@@ -621,7 +621,10 @@ class BiliBili:
             cost = time.perf_counter() - start
             logger.info('检测上传线路 %s，耗时 %.3fs', line['query'], cost)
             if test.status_code != 200:
-                last_error = RuntimeError(f"upload-line probe returned HTTP {test.status_code}")
+                last_error = requests.HTTPError(
+                    f"upload-line probe returned HTTP {test.status_code}",
+                    response=test,
+                )
                 logger.warning("检测上传线路 %s 返回 HTTP %s，跳过", line['query'], test.status_code)
                 continue
             if not min_cost or min_cost > cost:

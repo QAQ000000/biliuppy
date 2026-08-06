@@ -81,6 +81,7 @@ class WorkerState:
     task: asyncio.Task[None] | None = field(default=None, repr=False)
     recording_task: asyncio.Task[None] | None = field(default=None, repr=False)
     recorder: FFmpegRecorder | None = field(default=None, repr=False)
+    wake_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 
 
 class RecordingScheduler:
@@ -167,7 +168,6 @@ class RecordingScheduler:
             raise KeyError(streamer_id)
         state.paused = not state.paused
         state.status = "Paused" if state.paused else "Checking"
-        state.error = None
         if state.paused:
             if state.recorder:
                 await state.recorder.stop()
@@ -175,6 +175,10 @@ class RecordingScheduler:
                 state.recording_task.cancel()
                 await asyncio.gather(state.recording_task, return_exceptions=True)
             state.status = "Paused"
+        else:
+            if state.upload_status != "Error":
+                state.error = None
+            state.wake_event.set()
         return state
 
     def snapshot(self) -> dict[int, WorkerState]:
@@ -185,13 +189,13 @@ class RecordingScheduler:
 
     async def _monitor(self, state: WorkerState, *, initial_delay: float = 0) -> None:
         if initial_delay:
-            await asyncio.sleep(initial_delay)
+            await self._sleep_until_next_check(state, initial_delay)
         unknown_failures = 0
         while not self._closing:
             checker = None
             try:
                 if state.paused:
-                    await asyncio.sleep(1)
+                    await self._sleep_until_next_check(state, 1)
                     continue
                 with self.database.session_factory() as session:
                     streamer = self._load_streamer(session, state.streamer_id)
@@ -203,6 +207,9 @@ class RecordingScheduler:
                 with self.config.overlay(payload["override"]):
                     checker = checker_type(payload["remark"], payload["url"], payload["format"] or "flv")
                 probe = await self._probe_stream(checker, is_check=False)
+                if state.paused:
+                    state.status = "Paused"
+                    continue
                 if probe.status is StreamStatus.LIVE and recording_allowed(
                     checker.room_title,
                     payload["excluded_keywords"],
@@ -232,22 +239,39 @@ class RecordingScheduler:
                     ceiling = max(base, 300.0)
                     backoff = min(base * (2 ** min(unknown_failures - 1, 4)), ceiling)
                     jitter = random.uniform(0, max(0.0, float(self.config.get("checker_sleep", 10) or 0)))
-                    await asyncio.sleep(backoff + jitter)
+                    await self._sleep_until_next_check(state, backoff + jitter)
                 else:
                     unknown_failures = 0
                     state.status = "Idle"
                     state.error = None
-                    await asyncio.sleep(float(self.config.get("event_loop_interval", 30)))
+                    await self._sleep_until_next_check(
+                        state,
+                        float(self.config.get("event_loop_interval", 30)),
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 state.status = "Error"
                 state.error = str(exc)
                 logger.exception("Streamer %s monitor failed", state.streamer_id)
-                await asyncio.sleep(float(self.config.get("event_loop_interval", 30)))
+                await self._sleep_until_next_check(
+                    state,
+                    float(self.config.get("event_loop_interval", 30)),
+                )
             finally:
                 if checker is not None and hasattr(checker, "close"):
                     await asyncio.to_thread(checker.close)
+
+    @staticmethod
+    async def _sleep_until_next_check(state: WorkerState, delay: float) -> None:
+        if delay <= 0:
+            return
+        try:
+            await asyncio.wait_for(state.wake_event.wait(), timeout=delay)
+        except TimeoutError:
+            pass
+        finally:
+            state.wake_event.clear()
 
     async def _probe_stream(self, checker: Any, *, is_check: bool) -> StreamProbeResult:
         async with self.checker_semaphore:

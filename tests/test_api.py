@@ -17,6 +17,7 @@ from biliup.core import AppSettings
 from biliup.database import Database
 from biliup.database.models import Configuration, FileItem, StreamerInfo
 from biliup.services import HomeInstanceLockError
+from biliup.services.scheduler import WorkerState
 
 
 def make_client(tmp_path: Path, *, auth: bool = False) -> TestClient:
@@ -109,6 +110,14 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         updated = client.put("/v1/streamers", json=streamer)
         assert updated.status_code == 200
         assert updated.json()["remark"] == "renamed"
+
+        streamer_id = streamer["id"]
+        client.app.state.context.scheduler.workers[streamer_id] = WorkerState(streamer_id=streamer_id)
+        paused = client.put(f"/v1/streamers/{streamer_id}/pause")
+        assert paused.json() == {"id": streamer_id, "paused": True, "status": "Paused"}
+        resumed = client.put(f"/v1/streamers/{streamer_id}/pause")
+        assert resumed.json() == {"id": streamer_id, "paused": False, "status": "Checking"}
+        assert client.put("/v1/streamers/999999/pause").status_code == 404
 
         template = client.post(
             "/v1/upload/streamers",

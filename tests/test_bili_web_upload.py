@@ -8,6 +8,7 @@ import pytest
 import requests
 
 from biliup.engine.decorators import Plugin
+from biliup.integrations.upload_errors import is_transient_upload_error
 from biliup.integrations.uploaders.bili_web import (
     BiliBili,
     Data,
@@ -324,6 +325,41 @@ def test_auto_line_probe_skips_unhealthy_candidate(monkeypatch) -> None:
     selected = bili.probe()
 
     assert selected["query"].startswith("upcdn=tx")
+
+
+@pytest.mark.parametrize("status_code", [429, 500])
+def test_auto_line_probe_preserves_transient_http_failure(status_code, monkeypatch) -> None:
+    line = {
+        "os": "upos",
+        "query": "upcdn=bda2&probe_version=20221109",
+        "probe_url": "//upos-cs-upcdnbda2.bilivideo.com/OK",
+    }
+
+    class FakeResponse:
+        def __init__(self, status_code=200, payload=None):
+            self.status_code = status_code
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeSession:
+        def get(self, _url, **_kwargs):
+            return FakeResponse(payload={"probe": {"get": True}, "lines": [line]})
+
+        def request(self, _method, _url, **_kwargs):
+            return FakeResponse(status_code=status_code)
+
+    bili = BiliBili(Data())
+    bili._BiliBili__session = FakeSession()
+
+    with pytest.raises(RuntimeError, match="No healthy Bilibili upload line") as exc_info:
+        bili.probe()
+
+    assert is_transient_upload_error(exc_info.value) is True
 
 
 def test_auto_upload_failure_excludes_selected_line(tmp_path: Path, monkeypatch) -> None:

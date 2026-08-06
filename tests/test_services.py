@@ -650,6 +650,127 @@ async def test_scheduler_resume_starts_checking_and_clears_stale_error(tmp_path:
     assert state.paused is False
     assert state.status == "Checking"
     assert state.error is None
+    assert state.wake_event.is_set()
+    database.dispose()
+
+
+async def test_scheduler_pause_preserves_upload_error(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    state = WorkerState(streamer_id=7, status="Idle", upload_status="Error", error="upload failed")
+    scheduler.workers[state.streamer_id] = state
+
+    await scheduler.toggle_pause(state.streamer_id)
+
+    assert state.paused is True
+    assert state.status == "Paused"
+    assert state.error == "upload failed"
+    database.dispose()
+
+
+async def test_scheduler_resume_wakes_sleeping_monitor(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"event_loop_interval": 300}),
+        enabled=False,
+    )
+    probed = asyncio.Event()
+
+    class ImmediateChecker:
+        room_title = ""
+
+        def __init__(self, *_args):
+            pass
+
+        async def aprobe_stream(self, is_check=False):
+            probed.set()
+            return StreamProbeResult.offline()
+
+        def close(self):
+            return None
+
+    payload = {
+        "url": "https://example.invalid/room",
+        "remark": "demo",
+        "format": "flv",
+        "override": {},
+        "excluded_keywords": [],
+        "time_range": None,
+    }
+    monkeypatch.setattr(scheduler, "_load_streamer", lambda _session, _streamer_id: object())
+    monkeypatch.setattr(scheduler, "_streamer_payload", lambda _streamer: payload)
+    monkeypatch.setattr("biliup.services.scheduler.Plugin.inspect_checker", lambda _url: ImmediateChecker)
+    state = WorkerState(streamer_id=7, status="Paused", paused=True)
+    state.task = asyncio.create_task(scheduler._monitor(state))
+    scheduler.workers[state.streamer_id] = state
+    await asyncio.sleep(0)
+
+    await scheduler.toggle_pause(state.streamer_id)
+    await asyncio.wait_for(probed.wait(), timeout=1)
+
+    assert state.paused is False
+    scheduler._closing = True
+    state.wake_event.set()
+    await asyncio.wait_for(state.task, timeout=1)
+    database.dispose()
+
+
+async def test_scheduler_ignores_probe_result_after_pause(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(database, paths, ConfigStore({}), enabled=False)
+    probe_started = asyncio.Event()
+    release_probe = asyncio.Event()
+
+    class BlockingChecker:
+        room_title = ""
+
+        def __init__(self, *_args):
+            pass
+
+        async def aprobe_stream(self, is_check=False):
+            probe_started.set()
+            await release_probe.wait()
+            return StreamProbeResult.offline()
+
+        def close(self):
+            return None
+
+    payload = {
+        "url": "https://example.invalid/room",
+        "remark": "demo",
+        "format": "flv",
+        "override": {},
+        "excluded_keywords": [],
+        "time_range": None,
+    }
+    monkeypatch.setattr(scheduler, "_load_streamer", lambda _session, _streamer_id: object())
+    monkeypatch.setattr(scheduler, "_streamer_payload", lambda _streamer: payload)
+    monkeypatch.setattr("biliup.services.scheduler.Plugin.inspect_checker", lambda _url: BlockingChecker)
+    state = WorkerState(streamer_id=7)
+    state.task = asyncio.create_task(scheduler._monitor(state))
+    scheduler.workers[state.streamer_id] = state
+    await asyncio.wait_for(probe_started.wait(), timeout=1)
+
+    await scheduler.toggle_pause(state.streamer_id)
+    release_probe.set()
+    for _attempt in range(100):
+        if state.status == "Paused":
+            break
+        await asyncio.sleep(0.01)
+
+    assert state.paused is True
+    assert state.status == "Paused"
+    scheduler._closing = True
+    state.wake_event.set()
+    await asyncio.wait_for(state.task, timeout=1)
     database.dispose()
 
 
@@ -902,6 +1023,41 @@ async def test_offline_confirmation_requires_consecutive_results(tmp_path: Path,
 
     assert recovered is False
     assert probes == []
+    database.dispose()
+
+
+async def test_default_offline_confirmation_probes_at_zero_thirty_sixty(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"delay": 60, "checker_sleep": 10}),
+        enabled=False,
+    )
+    now = 0.0
+    probe_times: list[float] = []
+    sleeps: list[float] = []
+
+    class OfflineChecker(SchedulerChecker):
+        async def aprobe_stream(self, is_check=False):
+            probe_times.append(now)
+            return StreamProbeResult.offline()
+
+    async def advance_clock(delay):
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    monkeypatch.setattr(scheduler, "_clock", lambda: now)
+    monkeypatch.setattr("biliup.services.scheduler.asyncio.sleep", advance_clock)
+
+    recovered = await scheduler._wait_for_stream_recovery(WorkerState(streamer_id=7), OfflineChecker())
+
+    assert recovered is False
+    assert probe_times == [0.0, 30.0, 60.0]
+    assert sleeps == [30.0, 30.0]
     database.dispose()
 
 

@@ -65,7 +65,13 @@ async def manual_upload(payload: ManualUploadInput, context: AppContext = Depend
         idempotency_key = upload_idempotency_key(payload.files, params, context.paths)
         job = context.jobs.submit(
             "upload",
-            lambda: upload_files(payload.files, params, context.paths, context.database),
+            lambda: upload_files(
+                payload.files,
+                params,
+                context.paths,
+                context.database,
+                max_attempts=max(1, int(context.config.get("max_upload_limit", 8) or 8)),
+            ),
             idempotency_key=idempotency_key,
         )
     except JobCapacityError as exc:
