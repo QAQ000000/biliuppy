@@ -19,7 +19,7 @@ from biliup.core import AppSettings
 from biliup.core.redaction import redact_sensitive_text
 from biliup.database import Database
 from biliup.integrations.uploader import shutdown_upload_executor
-from biliup.services import BackgroundJobManager, HomeInstanceLock, RecordingScheduler
+from biliup.services import BackgroundJobManager, HomeInstanceLock, MediaStorageService, RecordingScheduler
 from biliup.services.config_import import import_legacy_streamers
 
 from .context import AppContext, load_effective_config
@@ -148,6 +148,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 config,
                 enabled=app_settings.scheduler_enabled,
             )
+            media_storage = MediaStorageService(
+                database,
+                paths,
+                config,
+                protected_paths=scheduler.active_recording_paths,
+            )
             jobs = BackgroundJobManager(
                 database,
                 active_limits={"upload": effective_config.manual_upload_queue_limit},
@@ -163,13 +169,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 database,
                 config,
                 scheduler,
+                media_storage,
                 jobs,
                 log_handler,
             )
             try:
+                await media_storage.start()
                 await scheduler.start()
                 yield
             finally:
+                await media_storage.stop()
                 await jobs.shutdown()
                 await scheduler.stop()
                 await shutdown_upload_executor()

@@ -75,12 +75,14 @@ class RecordingConfig(BaseModel):
     recorder_retry_limit: int = Field(default=10, ge=1, le=100)
     recorder_retry_backoff: int = Field(default=5, ge=1, le=300)
     min_free_disk_gb: int = Field(default=5, ge=0, le=10_240)
-    pool1_size: int = 5
-    pool2_size: int = 3
+    pool1_size: int = Field(default=5, ge=1, le=100)
+    pool2_size: int = Field(default=3, ge=1, le=100)
     max_upload_limit: int = 8
     manual_upload_queue_limit: int = Field(default=8, ge=1, le=100)
+    automatic_upload_queue_limit: int = Field(default=8, ge=1, le=100)
     log_file_max_size_mb: int = Field(default=10, ge=1, le=10_240)
     history_max_records: int = Field(default=10_000, ge=1, le=1_000_000)
+    recording_retention_days: int = Field(default=0, ge=0, le=3_650)
     use_live_cover: bool = False
     streamers: dict[str, StreamerConfig] = Field(default_factory=dict)
     user: dict[str, Any] = Field(default_factory=dict)

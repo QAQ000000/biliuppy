@@ -27,6 +27,8 @@ from biliup.integrations.uploaders.bili_web import BiliWeb
 logger = logging.getLogger("biliup.uploader")
 _upload_executor: ThreadPoolExecutor | None = None
 _upload_executor_guard = threading.Lock()
+_active_uploads: dict[Path, int] = {}
+_active_uploads_guard = threading.Lock()
 _IDEMPOTENCY_PARAM_KEYS = (
     "uploader",
     "template_name",
@@ -63,6 +65,27 @@ def _get_upload_executor() -> ThreadPoolExecutor:
             workers = min(32, (os.cpu_count() or 1) + 4)
             _upload_executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="biliup-upload")
         return _upload_executor
+
+
+def active_upload_paths() -> set[Path]:
+    with _active_uploads_guard:
+        return set(_active_uploads)
+
+
+def _register_active_uploads(paths: list[Path]) -> None:
+    with _active_uploads_guard:
+        for path in paths:
+            _active_uploads[path] = _active_uploads.get(path, 0) + 1
+
+
+def _unregister_active_uploads(paths: list[Path]) -> None:
+    with _active_uploads_guard:
+        for path in paths:
+            remaining = _active_uploads.get(path, 0) - 1
+            if remaining > 0:
+                _active_uploads[path] = remaining
+            else:
+                _active_uploads.pop(path, None)
 
 
 async def shutdown_upload_executor() -> None:
@@ -219,49 +242,53 @@ async def upload_files(
         raise ValueError("No files selected")
     transient_failures = 0
     max_attempts = max(1, int(max_attempts))
-    while True:
-        cancel_event = threading.Event()
-        params.setdefault("_excluded_upload_lines", [])
-        attempt_params = {**params, "_cancel_event": cancel_event}
-        executor_future = _get_upload_executor().submit(
-            _upload_sync,
-            resolved,
-            attempt_params,
-            app_paths,
-            database,
-        )
-        upload_future = asyncio.wrap_future(executor_future)
-        try:
-            return await asyncio.shield(upload_future)
-        except SubmitDelayError as exc:
-            delay = max(0.05, exc.retry_after)
-            logger.info("等待账号投稿间隔 %.1f 秒，已上传分P将在稍后复用", delay)
-            await asyncio.sleep(delay)
-        except asyncio.CancelledError as cancellation:
-            if executor_future.cancel():
-                logger.info("已取消尚未开始的排队上传任务")
-                raise
-            cancel_event.set()
-            logger.warning("上传任务已收到取消请求，正在停止当前网络分片")
-            while True:
-                try:
-                    return await asyncio.shield(upload_future)
-                except asyncio.CancelledError:
-                    continue
-                except UploadCancelledError:
-                    raise cancellation
-                except Exception:
-                    raise cancellation
-        except Exception as exc:
-            transient_failures += 1
-            if transient_failures >= max_attempts or not is_transient_upload_error(exc):
-                raise
-            delay = min(2**transient_failures, 30)
-            logger.warning(
-                "上传线路发生暂时故障，%s 秒后切换线路重试 %s/%s：%s",
-                delay,
-                transient_failures + 1,
-                max_attempts,
-                exc,
+    _register_active_uploads(resolved)
+    try:
+        while True:
+            cancel_event = threading.Event()
+            params.setdefault("_excluded_upload_lines", [])
+            attempt_params = {**params, "_cancel_event": cancel_event}
+            executor_future = _get_upload_executor().submit(
+                _upload_sync,
+                resolved,
+                attempt_params,
+                app_paths,
+                database,
             )
-            await asyncio.sleep(delay)
+            upload_future = asyncio.wrap_future(executor_future)
+            try:
+                return await asyncio.shield(upload_future)
+            except SubmitDelayError as exc:
+                delay = max(0.05, exc.retry_after)
+                logger.info("等待账号投稿间隔 %.1f 秒，已上传分P将在稍后复用", delay)
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError as cancellation:
+                if executor_future.cancel():
+                    logger.info("已取消尚未开始的排队上传任务")
+                    raise
+                cancel_event.set()
+                logger.warning("上传任务已收到取消请求，正在停止当前网络分片")
+                while True:
+                    try:
+                        return await asyncio.shield(upload_future)
+                    except asyncio.CancelledError:
+                        continue
+                    except UploadCancelledError:
+                        raise cancellation
+                    except Exception:
+                        raise cancellation
+            except Exception as exc:
+                transient_failures += 1
+                if transient_failures >= max_attempts or not is_transient_upload_error(exc):
+                    raise
+                delay = min(2**transient_failures, 30)
+                logger.warning(
+                    "上传线路发生暂时故障，%s 秒后切换线路重试 %s/%s：%s",
+                    delay,
+                    transient_failures + 1,
+                    max_attempts,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+    finally:
+        _unregister_active_uploads(resolved)

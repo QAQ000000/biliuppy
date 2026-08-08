@@ -77,6 +77,10 @@ class ManualUploadInput(BaseModel):
     params: UploadStreamerInput
 
 
+class MediaFilesInput(BaseModel):
+    files: list[str] = Field(min_length=1, max_length=1_000)
+
+
 def orm_dict(instance: Any) -> dict[str, Any]:
     return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
 

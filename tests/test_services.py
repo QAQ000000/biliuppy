@@ -1131,6 +1131,41 @@ async def test_download_slot_is_released_before_upload(tmp_path: Path, monkeypat
     database.dispose()
 
 
+async def test_automatic_upload_queue_limit_retains_overflow_files(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"automatic_upload_queue_limit": 1}),
+        enabled=False,
+    )
+    release = asyncio.Event()
+
+    async def blocked_upload(*_args, **_kwargs):
+        await release.wait()
+
+    monkeypatch.setattr(scheduler, "_finish_upload", blocked_upload)
+    first = WorkerState(streamer_id=1)
+    second = WorkerState(streamer_id=2)
+    scheduler.workers = {1: first, 2: second}
+    first_file = paths.downloads / "first.flv"
+    second_file = paths.downloads / "second.flv"
+    first_file.write_bytes(b"first")
+    second_file.write_bytes(b"second")
+
+    assert scheduler._schedule_upload(first, {}, {}, [first_file]) is True
+    assert scheduler._schedule_upload(second, {}, {}, [second_file]) is False
+    assert second.upload_status == "Error"
+    assert "queue is full" in (second.upload_error or "")
+    assert second_file.exists()
+
+    release.set()
+    await asyncio.gather(*tuple(first.upload_tasks))
+    database.dispose()
+
+
 async def test_ffmpeg_failure_does_not_create_empty_history(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)

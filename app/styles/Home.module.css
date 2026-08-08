@@ -4,6 +4,16 @@
     /*margin-left: 11px;*/
 }
 
+.unmanagedButtonLabel {
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .unmanagedButtonLabel {
+        display: none;
+    }
+}
+
 body[theme-mode=dark] .shadow {
     box-shadow: var(--semi-shadow-elevated);
 }

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from biliup import __version__
-from biliup.core.media import is_recording_work_file
+from biliup.core.media import MEDIA_EXTENSIONS, is_recording_work_file
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo
 from biliup.services.history import prune_history
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session
-from ..schemas import orm_dict, streamer_info_dict
+from ..schemas import MediaFilesInput, orm_dict, streamer_info_dict
 
 router = APIRouter()
-MEDIA_EXTENSIONS = {".mp4", ".flv", ".3gp", ".webm", ".mkv", ".ts"}
 
 
 @router.get("/v1/videos")
@@ -30,6 +29,47 @@ def list_videos(context: AppContext = Depends(get_context)) -> list[dict]:
         stat = path.stat()
         result.append({"key": index, "name": path.name, "updateTime": int(stat.st_mtime), "size": stat.st_size})
     return result
+
+
+@router.get("/v1/videos/unmanaged")
+def list_unmanaged_videos(context: AppContext = Depends(get_context)) -> dict:
+    files = context.media_storage.list_unmanaged()
+    return {
+        "files": files,
+        "total_files": len(files),
+        "total_bytes": sum(int(item["size"]) for item in files),
+    }
+
+
+@router.delete("/v1/videos/unmanaged")
+def delete_unmanaged_videos(
+    payload: MediaFilesInput,
+    context: AppContext = Depends(get_context),
+) -> dict:
+    try:
+        return context.media_storage.delete_unmanaged(payload.files)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/v1/videos/parts/recover")
+async def recover_recording_parts(
+    payload: MediaFilesInput,
+    context: AppContext = Depends(get_context),
+) -> dict:
+    try:
+        recovered = await context.media_storage.recover_parts(payload.files)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"recovered": recovered}
 
 
 @router.get("/v1/streamer-info")

@@ -2,6 +2,7 @@
 
 from .instance_lock import HomeInstanceLock, HomeInstanceLockError
 from .jobs import BackgroundJobManager, JobAdmissionClosedError, JobCapacityError
+from .media_storage import MediaStorageService
 from .scheduler import RecordingScheduler
 from .submission_review import SubmissionReviewService
 
@@ -11,6 +12,7 @@ __all__ = [
     "HomeInstanceLockError",
     "JobAdmissionClosedError",
     "JobCapacityError",
+    "MediaStorageService",
     "RecordingScheduler",
     "SubmissionReviewService",
 ]

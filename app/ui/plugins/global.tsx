@@ -101,6 +101,22 @@ const Global: React.FC = () => {
           }}
           showClear={false}
         />
+        <Form.InputNumber
+          field="recording_retention_days"
+          label="录像自动保留天数（recording_retention_days）"
+          extraText="每小时清理超过此天数的已完成录像；正在录制、正在投稿和 .part 文件不会被自动删除。设为 0 可关闭。"
+          placeholder={0}
+          suffix="天"
+          min={0}
+          max={3650}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
       </div>
 
       <Space />
@@ -476,6 +492,21 @@ const Global: React.FC = () => {
           showClear={false}
         />
         <Form.InputNumber
+          field="automatic_upload_queue_limit"
+          placeholder={8}
+          extraText="自动投稿中正在运行和排队的任务总数上限；达到上限时保留源文件，并在录播状态中显示错误。"
+          label="自动投稿任务上限（automatic_upload_queue_limit）"
+          min={1}
+          max={100}
+          precision={0}
+          style={{ width: '100%' }}
+          fieldStyle={{
+            alignSelf: 'stretch',
+            padding: 0,
+          }}
+          showClear={false}
+        />
+        <Form.InputNumber
           field="upload_delay"
           placeholder={0}
           extraText="确认下播后、开始投稿前额外等待的时间。通常保持为 0。"
@@ -512,15 +543,21 @@ const Global: React.FC = () => {
         <Form.InputNumber
           field="pool2_size"
           extraText={
-            <div style={{ fontSize: '14px' }}>负责上传事件的线程池大小。根据实际带宽设置。</div>
+            <div style={{ fontSize: '14px' }}>
+              同时执行的自动投稿数量，不影响单个文件的上传并发。通常保持为 1-3。
+            </div>
           }
           placeholder={3}
-          label="上传线程池大小（pool2_size）"
+          label="自动投稿并发（pool2_size）"
+          min={1}
+          max={100}
+          precision={0}
           style={{ width: '100%' }}
           fieldStyle={{
             alignSelf: 'stretch',
             padding: 0,
           }}
+          showClear={false}
         />
         <Form.Switch
           field="use_live_cover"

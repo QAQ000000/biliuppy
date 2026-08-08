@@ -86,6 +86,8 @@ class WorkerState:
     recording_task: asyncio.Task[None] | None = field(default=None, repr=False)
     upload_tasks: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
     recorder: FFmpegRecorder | None = field(default=None, repr=False)
+    recording_stem: str | None = field(default=None, repr=False)
+    recording_format: str | None = field(default=None, repr=False)
     wake_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     transition_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     upload_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -221,6 +223,23 @@ class RecordingScheduler:
     def snapshot(self) -> dict[int, WorkerState]:
         return dict(self.workers)
 
+    def active_recording_paths(self) -> set[Path]:
+        paths: set[Path] = set()
+        for state in self.workers.values():
+            if not state.recording_stem or not state.recording_format:
+                continue
+            paths.update(
+                path.resolve()
+                for path in self.paths.downloads.glob(
+                    f"{state.recording_stem}*.{state.recording_format}"
+                )
+                if path.is_file()
+            )
+        return paths
+
+    def update_upload_limit(self, pool_size: int) -> None:
+        self.upload_semaphore = asyncio.Semaphore(max(1, int(pool_size)))
+
     def _load_streamer(self, session: Session, streamer_id: int) -> LiveStreamer | None:
         return session.scalar(select(LiveStreamer).where(LiveStreamer.id == streamer_id))
 
@@ -265,6 +284,8 @@ class RecordingScheduler:
                     finally:
                         if state.recording_task is recording_task:
                             state.recording_task = None
+                        state.recording_stem = None
+                        state.recording_format = None
                     if state.paused:
                         state.status = "Paused"
                     unknown_failures = 0
@@ -455,6 +476,8 @@ class RecordingScheduler:
         try:
             state.recorder = FFmpegRecorder(spec)
             stem = state.recorder.prepare_stem()
+            state.recording_stem = stem
+            state.recording_format = spec.format
             try:
                 cover_path = await self._download_cover(checker, payload, stem)
             except Exception as exc:
@@ -624,13 +647,31 @@ class RecordingScheduler:
         payload: dict[str, Any],
         context: dict[str, Any],
         files: list[Path],
-    ) -> None:
+    ) -> bool:
+        queued = sum(
+            not task.done()
+            for worker in self.workers.values()
+            for task in worker.upload_tasks
+        )
+        limit = max(1, int(self.config.get("automatic_upload_queue_limit", 8) or 8))
+        if queued >= limit:
+            state.upload_status = "Error"
+            state.upload_error = (
+                f"Automatic upload queue is full (limit: {limit}); source files were retained"
+            )
+            logger.error(
+                "Automatic upload queue is full for streamer %s; retained %s source file(s)",
+                state.streamer_id,
+                len(files),
+            )
+            return False
         task = asyncio.create_task(
             self._finish_upload(state, payload, dict(context), list(files)),
             name=f"upload-streamer-{state.streamer_id}",
         )
         state.upload_tasks.add(task)
         task.add_done_callback(lambda completed: self._upload_task_done(state, completed))
+        return True
 
     def _upload_task_done(self, state: WorkerState, task: asyncio.Task[None]) -> None:
         state.upload_tasks.discard(task)

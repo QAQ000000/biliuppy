@@ -84,6 +84,8 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert initial_config["log_file_max_size_mb"] == 10
         assert initial_config["history_max_records"] == 10_000
         assert initial_config["min_free_disk_gb"] == 5
+        assert initial_config["recording_retention_days"] == 0
+        assert initial_config["automatic_upload_queue_limit"] == 8
 
         initial_config["log_file_max_size_mb"] = 25
         updated_config = client.put("/v1/configuration", json=initial_config)
@@ -146,6 +148,8 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert client.get("/v1/videos").json()[0]["name"] == "sample.mp4"
         assert len(client.get("/v1/videos").json()) == 1
         assert client.get("/static/sample.mp4").content == b"video"
+        unmanaged = client.get("/v1/videos/unmanaged").json()
+        assert {item["name"] for item in unmanaged["files"]} == {"sample.mp4", "interrupted.part.mp4"}
 
         accepted = client.post(
             "/v1/uploads",
@@ -162,6 +166,14 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
                 break
             time.sleep(0.01)
         assert job == {"id": task_id, "kind": "upload", "status": "Completed", "error": None}
+
+        deleted = client.request(
+            "DELETE",
+            "/v1/videos/unmanaged",
+            json={"files": ["interrupted.part.mp4"]},
+        )
+        assert deleted.json() == {"deleted_files": 1, "deleted_bytes": 7}
+        assert not (tmp_path / "downloads" / "interrupted.part.mp4").exists()
 
         assert client.delete(f"/v1/streamers/{streamer['id']}").status_code == 204
 

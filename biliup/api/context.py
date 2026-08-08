@@ -10,7 +10,7 @@ from biliup.config import ConfigStore
 from biliup.core import AppPaths, AppSettings, RecordingConfig, load_recording_config
 from biliup.database.models import Configuration
 from biliup.database.session import Database
-from biliup.services import BackgroundJobManager, RecordingScheduler
+from biliup.services import BackgroundJobManager, MediaStorageService, RecordingScheduler
 
 
 @dataclass(slots=True)
@@ -20,6 +20,7 @@ class AppContext:
     database: Database
     config: ConfigStore
     scheduler: RecordingScheduler
+    media_storage: MediaStorageService
     jobs: BackgroundJobManager
     log_handler: RotatingFileHandler
 
