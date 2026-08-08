@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ logger = logging.getLogger("biliup.uploader")
 _upload_executor: ThreadPoolExecutor | None = None
 _upload_executor_guard = threading.Lock()
 _active_uploads: dict[Path, int] = {}
+_reserved_media_paths: set[Path] = set()
 _active_uploads_guard = threading.Lock()
 _IDEMPOTENCY_PARAM_KEYS = (
     "uploader",
@@ -72,20 +74,45 @@ def active_upload_paths() -> set[Path]:
         return set(_active_uploads)
 
 
-def _register_active_uploads(paths: list[Path]) -> None:
+def busy_media_paths() -> set[Path]:
     with _active_uploads_guard:
-        for path in paths:
+        return set(_active_uploads) | set(_reserved_media_paths)
+
+
+def register_active_uploads(paths: Iterable[Path]) -> list[Path]:
+    resolved = list(dict.fromkeys(Path(path).resolve() for path in paths))
+    with _active_uploads_guard:
+        conflicts = _reserved_media_paths.intersection(resolved)
+        if conflicts:
+            raise ValueError(f"Media file is being recovered or deleted: {next(iter(conflicts)).name}")
+        for path in resolved:
             _active_uploads[path] = _active_uploads.get(path, 0) + 1
+    return resolved
 
 
-def _unregister_active_uploads(paths: list[Path]) -> None:
+def unregister_active_uploads(paths: Iterable[Path]) -> None:
     with _active_uploads_guard:
         for path in paths:
+            path = Path(path).resolve()
             remaining = _active_uploads.get(path, 0) - 1
             if remaining > 0:
                 _active_uploads[path] = remaining
             else:
                 _active_uploads.pop(path, None)
+
+
+def reserve_media_paths(paths: Iterable[Path]) -> list[Path] | None:
+    resolved = list(dict.fromkeys(Path(path).resolve() for path in paths))
+    with _active_uploads_guard:
+        if any(path in _active_uploads or path in _reserved_media_paths for path in resolved):
+            return None
+        _reserved_media_paths.update(resolved)
+    return resolved
+
+
+def release_media_paths(paths: Iterable[Path]) -> None:
+    with _active_uploads_guard:
+        _reserved_media_paths.difference_update(Path(path).resolve() for path in paths)
 
 
 async def shutdown_upload_executor() -> None:
@@ -242,7 +269,7 @@ async def upload_files(
         raise ValueError("No files selected")
     transient_failures = 0
     max_attempts = max(1, int(max_attempts))
-    _register_active_uploads(resolved)
+    registered = register_active_uploads(resolved)
     try:
         while True:
             cancel_event = threading.Event()
@@ -291,4 +318,4 @@ async def upload_files(
                 )
                 await asyncio.sleep(delay)
     finally:
-        _unregister_active_uploads(resolved)
+        unregister_active_uploads(registered)

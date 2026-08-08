@@ -25,3 +25,10 @@ def completed_path_for_work_file(path: str | Path) -> Path:
     if not target.stem.casefold().endswith(marker):
         raise ValueError(f"Not a recording work file: {target.name}")
     return target.with_name(f"{target.stem[:-len(marker)]}{target.suffix}")
+
+
+def media_sidecar_path(path: str | Path) -> Path:
+    target = Path(path)
+    if is_recording_work_file(target):
+        target = completed_path_for_work_file(target)
+    return target.with_suffix(".xml")

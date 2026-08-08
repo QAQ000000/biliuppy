@@ -102,6 +102,11 @@ class BackgroundJobManager:
         )
         return job
 
+    def get_active(self, kind: str, idempotency_key: str) -> BackgroundJob | None:
+        job_id = self._active_keys.get((kind, idempotency_key))
+        job = self.jobs.get(job_id) if job_id else None
+        return job if job is not None and job.status in self.ACTIVE_STATUSES else None
+
     def _task_done(self, job_id: str, task: asyncio.Task[None]) -> None:
         self.tasks.pop(job_id, None)
         job = self.jobs.get(job_id)

@@ -38,6 +38,5 @@ async def put_configuration(
     session.commit()
     context.config.replace(validated)
     context.jobs.active_limits["upload"] = validated.manual_upload_queue_limit
-    context.scheduler.update_upload_limit(validated.pool2_size)
     context.log_handler.maxBytes = validated.log_file_max_size_mb * 1024 * 1024
     return json.loads(value)

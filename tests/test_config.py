@@ -2,7 +2,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from biliup.core import AppPaths, AppSettings, load_recording_config
+from biliup.core import AppPaths, AppSettings, RecordingConfig, load_recording_config
 from biliup.core.settings import save_recording_config
 from biliup.database import Database
 from biliup.database.models import LiveStreamer, UploadStreamer
@@ -95,6 +95,13 @@ def test_settings_find_legacy_root_config(tmp_path: Path) -> None:
     settings = AppSettings(home=tmp_path)
 
     assert settings.recording_config_path(settings.paths()) == config_path
+
+
+def test_legacy_zero_pool_sizes_are_normalized() -> None:
+    config = RecordingConfig.model_validate({"pool1_size": 0, "pool2_size": "0"})
+
+    assert config.pool1_size == 1
+    assert config.pool2_size == 1
 
 
 def test_file_based_streamers_are_imported_once(tmp_path: Path) -> None:

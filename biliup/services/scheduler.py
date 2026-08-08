@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -27,7 +28,11 @@ from biliup.database.session import Database
 from biliup.engine import Plugin, StreamProbeResult, StreamStatus
 from biliup.integrations.upload_errors import is_transient_upload_error
 from biliup.integrations.upload_state import UploadResult
-from biliup.integrations.uploader import upload_files
+from biliup.integrations.uploader import (
+    register_active_uploads,
+    unregister_active_uploads,
+    upload_files,
+)
 from biliup.platforms.bilibili import configure_bilibili_rooms
 
 from .history import prune_history
@@ -224,21 +229,21 @@ class RecordingScheduler:
         return dict(self.workers)
 
     def active_recording_paths(self) -> set[Path]:
-        paths: set[Path] = set()
-        for state in self.workers.values():
-            if not state.recording_stem or not state.recording_format:
-                continue
-            paths.update(
-                path.resolve()
-                for path in self.paths.downloads.glob(
-                    f"{state.recording_stem}*.{state.recording_format}"
-                )
-                if path.is_file()
+        patterns = [
+            re.compile(
+                rf"^{re.escape(state.recording_stem)}(?:_\d+)?(?:\.part)?\.{re.escape(state.recording_format)}$",
+                re.IGNORECASE,
             )
-        return paths
-
-    def update_upload_limit(self, pool_size: int) -> None:
-        self.upload_semaphore = asyncio.Semaphore(max(1, int(pool_size)))
+            for state in list(self.workers.values())
+            if state.recording_stem and state.recording_format
+        ]
+        if not patterns:
+            return set()
+        return {
+            path.resolve()
+            for path in self.paths.downloads.iterdir()
+            if path.is_file() and any(pattern.fullmatch(path.name) for pattern in patterns)
+        }
 
     def _load_streamer(self, session: Session, streamer_id: int) -> LiveStreamer | None:
         return session.scalar(select(LiveStreamer).where(LiveStreamer.id == streamer_id))
@@ -665,13 +670,34 @@ class RecordingScheduler:
                 len(files),
             )
             return False
-        task = asyncio.create_task(
-            self._finish_upload(state, payload, dict(context), list(files)),
-            name=f"upload-streamer-{state.streamer_id}",
-        )
+        try:
+            registered = register_active_uploads(files)
+            task = asyncio.create_task(
+                self._run_scheduled_upload(state, payload, dict(context), list(files), registered),
+                name=f"upload-streamer-{state.streamer_id}",
+            )
+        except (OSError, ValueError) as exc:
+            if "registered" in locals():
+                unregister_active_uploads(registered)
+            state.upload_status = "Error"
+            state.upload_error = str(exc)
+            return False
         state.upload_tasks.add(task)
         task.add_done_callback(lambda completed: self._upload_task_done(state, completed))
         return True
+
+    async def _run_scheduled_upload(
+        self,
+        state: WorkerState,
+        payload: dict[str, Any],
+        context: dict[str, Any],
+        files: list[Path],
+        registered: list[Path],
+    ) -> None:
+        try:
+            await self._finish_upload(state, payload, context, files)
+        finally:
+            unregister_active_uploads(registered)
 
     def _upload_task_done(self, state: WorkerState, task: asyncio.Task[None]) -> None:
         state.upload_tasks.discard(task)

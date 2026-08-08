@@ -544,7 +544,7 @@ const Global: React.FC = () => {
           field="pool2_size"
           extraText={
             <div style={{ fontSize: '14px' }}>
-              同时执行的自动投稿数量，不影响单个文件的上传并发。通常保持为 1-3。
+              同时执行的自动投稿数量，不影响单个文件的上传并发。通常保持为 1-3，修改后重启生效。
             </div>
           }
           placeholder={3}

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,10 +18,11 @@ from biliup.database.models import BackgroundJobRecord, FileItem, PendingSubmiss
 from biliup.engine import StreamProbeResult
 from biliup.integrations import bilibili as bili_service
 from biliup.integrations.upload_state import UploadResult
-from biliup.integrations.uploader import upload_files
+from biliup.integrations.uploader import active_upload_paths, upload_files
 from biliup.services.history import prune_history
 from biliup.services.hooks import HookRunner
 from biliup.services.jobs import BackgroundJobManager
+from biliup.services.media_storage import MediaStorageService
 from biliup.services.recorder import RecorderProcessError, RecorderStorageError
 from biliup.services.scheduler import RecordingScheduler, WorkerState, recording_allowed
 
@@ -1154,15 +1156,44 @@ async def test_automatic_upload_queue_limit_retains_overflow_files(tmp_path: Pat
     second_file = paths.downloads / "second.flv"
     first_file.write_bytes(b"first")
     second_file.write_bytes(b"second")
+    old = datetime.now().timestamp() - 4 * 86400
+    os.utime(first_file, (old, old))
 
     assert scheduler._schedule_upload(first, {}, {}, [first_file]) is True
+    assert first_file.resolve() in active_upload_paths()
     assert scheduler._schedule_upload(second, {}, {}, [second_file]) is False
     assert second.upload_status == "Error"
     assert "queue is full" in (second.upload_error or "")
     assert second_file.exists()
+    storage = MediaStorageService(
+        database,
+        paths,
+        ConfigStore({"recording_retention_days": 3}),
+        protected_paths=scheduler.active_recording_paths,
+    )
+    assert storage.cleanup_expired()["deleted_files"] == 0
+    assert first_file.exists()
 
     release.set()
     await asyncio.gather(*tuple(first.upload_tasks))
+    assert first_file.resolve() not in active_upload_paths()
+    database.dispose()
+
+
+def test_active_recording_paths_treat_glob_characters_literally(tmp_path: Path) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(database, paths, ConfigStore(), enabled=False)
+    state = WorkerState(streamer_id=1, recording_stem="主播[直播]", recording_format="flv")
+    scheduler.workers = {1: state}
+    part = paths.downloads / "主播[直播]_000.part.flv"
+    completed = paths.downloads / "主播[直播]_001.flv"
+    unrelated = paths.downloads / "主播直_001.flv"
+    for path in (part, completed, unrelated):
+        path.write_bytes(b"video")
+
+    assert scheduler.active_recording_paths() == {part.resolve(), completed.resolve()}
     database.dispose()
 
 

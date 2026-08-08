@@ -50,16 +50,20 @@ export default function Home() {
   const deleteMedia = async (files: string[]) => {
     setBusyFile(files.length === 1 ? files[0] : '*')
     try {
-      const result = await fetcher('/v1/videos/unmanaged', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files }),
-      }) as { deleted_files: number; deleted_bytes: number }
-      Toast.success(`已清理 ${result.deleted_files} 个文件`)
-      await refreshMedia()
+      let deletedFiles = 0
+      for (let index = 0; index < files.length; index += 1000) {
+        const result = await fetcher('/v1/videos/unmanaged', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: files.slice(index, index + 1000) }),
+        }) as { deleted_files: number; deleted_bytes: number }
+        deletedFiles += result.deleted_files
+      }
+      Toast.success(`已清理 ${deletedFiles} 个文件`)
     } catch (deleteError) {
       Toast.error(deleteError instanceof Error ? deleteError.message : '文件清理失败')
     } finally {
+      await refreshMedia().catch(() => undefined)
       setBusyFile(undefined)
     }
   }

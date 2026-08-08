@@ -16,6 +16,7 @@ from biliup.api.routers.logs import TAIL_MAX_BYTES, filter_log_lines, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
 from biliup.database.models import Configuration, FileItem, StreamerInfo
+from biliup.integrations.uploader import active_upload_paths
 from biliup.services import HomeInstanceLockError
 from biliup.services.scheduler import WorkerState
 
@@ -88,10 +89,12 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
         assert initial_config["automatic_upload_queue_limit"] == 8
 
         initial_config["log_file_max_size_mb"] = 25
+        upload_semaphore = client.app.state.context.scheduler.upload_semaphore
         updated_config = client.put("/v1/configuration", json=initial_config)
         assert updated_config.status_code == 200
         assert updated_config.json()["log_file_max_size_mb"] == 25
         assert client.app.state.context.log_handler.maxBytes == 25 * 1024 * 1024
+        assert client.app.state.context.scheduler.upload_semaphore is upload_semaphore
 
         created = client.post(
             "/v1/streamers",
@@ -206,6 +209,9 @@ def test_manual_upload_deduplicates_active_jobs_and_rejects_over_capacity(
         }
         first = client.post("/v1/uploads", json=payload)
         assert started.wait(1)
+        first_path = (tmp_path / "downloads" / "first.mp4").resolve()
+        second_path = (tmp_path / "downloads" / "second.mp4").resolve()
+        assert first_path in active_upload_paths()
         duplicate = client.post("/v1/uploads", json=payload)
         over_capacity = client.post(
             "/v1/uploads",
@@ -217,6 +223,7 @@ def test_manual_upload_deduplicates_active_jobs_and_rejects_over_capacity(
         assert duplicate.json()["task"] == first.json()["task"]
         assert over_capacity.status_code == 429
         assert calls == 1
+        assert second_path not in active_upload_paths()
 
         release.set()
         task_id = first.json()["task"]
@@ -224,6 +231,7 @@ def test_manual_upload_deduplicates_active_jobs_and_rejects_over_capacity(
             if client.get(f"/v1/uploads/{task_id}").json()["status"] == "Completed":
                 break
             time.sleep(0.01)
+        assert first_path not in active_upload_paths()
         resubmitted = client.post("/v1/uploads", json=payload)
         assert resubmitted.status_code == 200
         assert resubmitted.json()["task"] != task_id

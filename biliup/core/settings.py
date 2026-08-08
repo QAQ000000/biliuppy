@@ -93,7 +93,16 @@ class RecordingConfig(BaseModel):
         if not isinstance(value, dict):
             return value
         nullable_fields = {"file_size", "segment_time"}
-        return {key: item for key, item in value.items() if item is not None or key in nullable_fields}
+        normalized = {
+            key: item for key, item in value.items() if item is not None or key in nullable_fields
+        }
+        for field in ("pool1_size", "pool2_size"):
+            try:
+                if field in normalized and int(normalized[field]) <= 0:
+                    normalized[field] = 1
+            except (TypeError, ValueError):
+                pass
+        return normalized
 
 
 class AppSettings(BaseSettings):

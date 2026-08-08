@@ -10,10 +10,20 @@ from sqlalchemy import delete, select
 
 from biliup.config import ConfigStore
 from biliup.core import AppPaths
-from biliup.core.media import completed_path_for_work_file, is_media_file, is_recording_work_file
+from biliup.core.media import (
+    completed_path_for_work_file,
+    is_media_file,
+    is_recording_work_file,
+    media_sidecar_path,
+)
 from biliup.database.models import FileItem, PendingSubmission
 from biliup.database.session import Database
-from biliup.integrations.uploader import active_upload_paths
+from biliup.integrations.uploader import (
+    active_upload_paths,
+    busy_media_paths,
+    release_media_paths,
+    reserve_media_paths,
+)
 
 logger = logging.getLogger("biliup.media_storage")
 
@@ -52,6 +62,16 @@ class MediaStorageService:
         self._task = None
 
     def _protected(self) -> set[Path]:
+        return {
+            path.resolve()
+            for path in (
+                *self.protected_paths(),
+                *busy_media_paths(),
+                *self._pending_submission_paths(),
+            )
+        }
+
+    def _persistent_protected(self) -> set[Path]:
         return {
             path.resolve()
             for path in (
@@ -107,11 +127,14 @@ class MediaStorageService:
         protected = self._protected()
         result = []
         for path in self._media_files():
-            resolved = path.resolve()
-            if resolved in protected:
+            try:
+                resolved = path.resolve()
+                if resolved in protected:
+                    continue
+                if is_recording_work_file(path) or resolved not in tracked:
+                    result.append(self._item(path))
+            except FileNotFoundError:
                 continue
-            if is_recording_work_file(path) or resolved not in tracked:
-                result.append(self._item(path))
         return sorted(result, key=lambda item: (int(item["updateTime"]), str(item["name"])), reverse=True)
 
     def cleanup_expired(self) -> dict[str, int]:
@@ -119,15 +142,30 @@ class MediaStorageService:
         if not retention_days:
             return {"deleted_files": 0, "deleted_bytes": 0}
         cutoff = time.time() - retention_days * 24 * 60 * 60
-        protected = self._protected()
-        candidates = [
-            path
-            for path in self._media_files()
-            if not is_recording_work_file(path)
-            and path.resolve() not in protected
-            and path.stat().st_mtime < cutoff
-        ]
-        result = self._delete_paths(candidates)
+        protected = self._persistent_protected()
+        deleted_paths: list[str] = []
+        deleted_bytes = 0
+        for path in self._media_files():
+            if is_recording_work_file(path):
+                continue
+            reserved = reserve_media_paths([path])
+            if reserved is None:
+                continue
+            try:
+                if path.resolve() in protected:
+                    continue
+                try:
+                    if path.stat().st_mtime >= cutoff:
+                        continue
+                except FileNotFoundError:
+                    continue
+                removed, removed_bytes = self._unlink_paths([path])
+                deleted_paths.extend(removed)
+                deleted_bytes += removed_bytes
+            finally:
+                release_media_paths(reserved)
+        self._remove_file_items(deleted_paths)
+        result = {"deleted_files": len(deleted_paths), "deleted_bytes": deleted_bytes}
         if result["deleted_files"]:
             logger.info(
                 "Recording retention removed %s file(s), %s byte(s), older_than_days=%s",
@@ -144,7 +182,25 @@ class MediaStorageService:
         if missing:
             raise ValueError(f"Files are not unmanaged or are currently in use: {', '.join(missing)}")
         paths = [self._resolve_name(name) for name in requested]
-        return self._delete_paths(paths)
+        reserved = reserve_media_paths(paths)
+        if reserved is None:
+            raise ValueError("One or more files are currently in use")
+        try:
+            protected = self._persistent_protected()
+            tracked = self._tracked()
+            invalid = [
+                path.name
+                for path in paths
+                if path.resolve() in protected
+                or (not is_recording_work_file(path) and path.resolve() in tracked)
+            ]
+            if invalid:
+                raise ValueError(f"Files are not unmanaged or are currently in use: {', '.join(invalid)}")
+            deleted_paths, deleted_bytes = self._unlink_paths(paths)
+            self._remove_file_items(deleted_paths)
+            return {"deleted_files": len(deleted_paths), "deleted_bytes": deleted_bytes}
+        finally:
+            release_media_paths(reserved)
 
     async def recover_parts(self, names: Iterable[str]) -> list[dict[str, str]]:
         requested = list(dict.fromkeys(names))
@@ -156,16 +212,27 @@ class MediaStorageService:
         missing = sorted(set(requested) - available)
         if missing:
             raise ValueError(f"Files are not orphaned work files or are currently in use: {', '.join(missing)}")
-        recovered = []
-        for name in requested:
-            source = self._resolve_name(name)
-            target = completed_path_for_work_file(source)
-            if target.exists():
-                raise FileExistsError(f"Recovery target already exists: {target.name}")
-            await self._remux_part(source, target)
-            recovered.append({"source": source.name, "file": target.name})
-            logger.info("Recovered orphaned recording file %s as %s", source.name, target.name)
-        return recovered
+        sources = [self._resolve_name(name) for name in requested]
+        targets = [completed_path_for_work_file(source) for source in sources]
+        temporary_paths = [self._recovery_temporary_path(target) for target in targets]
+        reserved = reserve_media_paths([*sources, *targets, *temporary_paths])
+        if reserved is None:
+            raise ValueError("One or more files are currently in use")
+        try:
+            protected = self._persistent_protected()
+            recovered = []
+            for source, target in zip(sources, targets, strict=True):
+                if source.resolve() in protected or not source.is_file():
+                    raise ValueError(f"File is no longer an orphaned work file: {source.name}")
+                if target.exists():
+                    raise FileExistsError(f"Recovery target already exists: {target.name}")
+            for source, target in zip(sources, targets, strict=True):
+                await self._remux_part(source, target)
+                recovered.append({"source": source.name, "file": target.name})
+                logger.info("Recovered orphaned recording file %s as %s", source.name, target.name)
+            return recovered
+        finally:
+            release_media_paths(reserved)
 
     def _resolve_name(self, name: str) -> Path:
         if not name or Path(name).name != name:
@@ -175,7 +242,7 @@ class MediaStorageService:
             raise FileNotFoundError(name)
         return path
 
-    def _delete_paths(self, paths: Iterable[Path]) -> dict[str, int]:
+    def _unlink_paths(self, paths: Iterable[Path]) -> tuple[list[str], int]:
         deleted_paths: list[str] = []
         deleted_bytes = 0
         for path in paths:
@@ -183,7 +250,6 @@ class MediaStorageService:
                 size = path.stat().st_size
                 resolved = str(path.resolve())
                 path.unlink()
-                path.with_suffix(".xml").unlink(missing_ok=True)
             except FileNotFoundError:
                 continue
             except OSError as exc:
@@ -191,16 +257,28 @@ class MediaStorageService:
                 continue
             deleted_paths.append(resolved)
             deleted_bytes += size
-        if deleted_paths:
-            def remove_file_items(session) -> None:
-                session.execute(delete(FileItem).where(FileItem.file.in_(deleted_paths)))
+            try:
+                media_sidecar_path(path).unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("Failed to delete media sidecar %s: %s", media_sidecar_path(path), exc)
+        return deleted_paths, deleted_bytes
 
-            self.database.run_write(remove_file_items)
-        return {"deleted_files": len(deleted_paths), "deleted_bytes": deleted_bytes}
+    def _remove_file_items(self, deleted_paths: list[str]) -> None:
+        if not deleted_paths:
+            return
+
+        def remove_file_items(session) -> None:
+            session.execute(delete(FileItem).where(FileItem.file.in_(deleted_paths)))
+
+        self.database.run_write(remove_file_items)
+
+    @staticmethod
+    def _recovery_temporary_path(target: Path) -> Path:
+        return target.with_name(f"{target.stem}.recovering{target.suffix}")
 
     @staticmethod
     async def _remux_part(source: Path, target: Path) -> None:
-        temporary = target.with_name(f"{target.stem}.recovering{target.suffix}")
+        temporary = MediaStorageService._recovery_temporary_path(target)
         temporary.unlink(missing_ok=True)
         try:
             process = await asyncio.create_subprocess_exec(
@@ -231,9 +309,10 @@ class MediaStorageService:
             )
         temporary.replace(target)
         source.unlink()
-        source_xml = source.with_suffix(".xml")
-        if source_xml.is_file():
-            source_xml.replace(target.with_suffix(".xml"))
+        source_xml = media_sidecar_path(source)
+        target_xml = target.with_suffix(".xml")
+        if source_xml != target_xml and source_xml.is_file():
+            source_xml.replace(target_xml)
 
     async def _run(self) -> None:
         while True:

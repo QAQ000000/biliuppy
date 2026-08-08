@@ -5,7 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from biliup.database.models import FileItem, UploadStreamer
-from biliup.integrations.uploader import resolve_upload_files, upload_files, upload_idempotency_key
+from biliup.integrations.uploader import (
+    register_active_uploads,
+    resolve_upload_files,
+    unregister_active_uploads,
+    upload_files,
+    upload_idempotency_key,
+)
 from biliup.services import JobAdmissionClosedError, JobCapacityError
 from biliup.services.upload_templates import render_upload_text
 
@@ -102,17 +108,41 @@ async def manual_upload(payload: ManualUploadInput, context: AppContext = Depend
         )
         params["source_url"] = template_context["url"]
         idempotency_key = upload_idempotency_key(payload.files, params, context.paths)
-        job = context.jobs.submit(
-            "upload",
-            lambda: upload_files(
-                payload.files,
-                params,
-                context.paths,
-                context.database,
-                max_attempts=max(1, int(context.config.get("max_upload_limit", 8) or 8)),
-            ),
-            idempotency_key=idempotency_key,
-        )
+        job = context.jobs.get_active("upload", idempotency_key)
+        if job is None:
+            registered = register_active_uploads(resolve_upload_files(payload.files, context.paths))
+            released = False
+
+            def release_paths() -> None:
+                nonlocal released
+                if not released:
+                    released = True
+                    unregister_active_uploads(registered)
+
+            async def run_upload():
+                try:
+                    return await upload_files(
+                        payload.files,
+                        params,
+                        context.paths,
+                        context.database,
+                        max_attempts=max(1, int(context.config.get("max_upload_limit", 8) or 8)),
+                    )
+                finally:
+                    release_paths()
+
+            try:
+                job = context.jobs.submit(
+                    "upload",
+                    run_upload,
+                    idempotency_key=idempotency_key,
+                )
+            except Exception:
+                release_paths()
+                raise
+            task = context.jobs.tasks.get(job.id)
+            if task is not None:
+                task.add_done_callback(lambda _completed: release_paths())
     except JobCapacityError as exc:
         raise HTTPException(429, str(exc)) from exc
     except JobAdmissionClosedError as exc:
