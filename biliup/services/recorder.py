@@ -180,6 +180,7 @@ class FFmpegRecorder:
                     line = raw_line.decode(errors="replace").strip().strip("\"'")
                     candidate = Path(line)
                     if callback and candidate.is_file() and (notified is None or candidate not in notified):
+                        candidate = self._finalize_file(candidate)
                         await callback(candidate)
                         if notified is not None:
                             notified.add(candidate)
@@ -207,7 +208,10 @@ class FFmpegRecorder:
                             self.process.kill()
                             await self.process.wait()
                         raise RecorderStalledError(stall_timeout)
-            return await self.process.wait()
+            return_code = await self.process.wait()
+            if return_code == 0:
+                self._finalize_pending_files()
+            return return_code
         except BaseException:
             await self.stop()
             raise
@@ -222,7 +226,7 @@ class FFmpegRecorder:
 
     def _output_size(self) -> int:
         total = 0
-        for file in self.output_files():
+        for file in [*self.output_files(), *self.pending_files()]:
             try:
                 total += file.stat().st_size
             except OSError:
@@ -248,7 +252,11 @@ class FFmpegRecorder:
         seconds = duration_seconds(self.spec.segment_time)
         size_limited = bool(self.spec.file_size and self.spec.file_size > 0)
         segmented = bool(seconds and seconds > 0 and not size_limited)
-        output_name = f"{stem}_%03d.{self.spec.format}" if segmented else f"{stem}.{self.spec.format}"
+        output_name = (
+            f"{stem}_%03d.part.{self.spec.format}"
+            if segmented
+            else f"{stem}.part.{self.spec.format}"
+        )
         output = self.spec.output_dir / output_name
         logger.info("Starting FFmpeg recording for %s", self.spec.name)
         if not size_limited:
@@ -261,16 +269,17 @@ class FFmpegRecorder:
 
         index = 0
         while not self._stopping:
-            part = self.spec.output_dir / f"{stem}_{index:03d}.{self.spec.format}"
+            part = self.spec.output_dir / f"{stem}_{index:03d}.part.{self.spec.format}"
             started = time.monotonic()
             return_code = await self._run_process(self._command(part, False, bounded=True))
             if return_code and not self._stopping:
                 raise RecorderProcessError(return_code)
-            if self._stopping or not part.is_file():
+            completed_part = self._final_path(part)
+            if self._stopping or not completed_part.is_file():
                 break
-            reached_size = part.stat().st_size >= int(self.spec.file_size * 0.95)
+            reached_size = completed_part.stat().st_size >= int(self.spec.file_size * 0.95)
             reached_time = bool(seconds and time.monotonic() - started >= seconds * 0.95)
-            await self._notify_files([part], on_segment, notified)
+            await self._notify_files([completed_part], on_segment, notified)
             if not (reached_size or reached_time):
                 break
             index += 1
@@ -280,7 +289,31 @@ class FFmpegRecorder:
 
     def output_files(self) -> list[Path]:
         stem = self.prepare_stem()
-        return sorted(self.spec.output_dir.glob(f"{stem}*.{self.spec.format}"))
+        return sorted(
+            file
+            for file in self.spec.output_dir.glob(f"{stem}*.{self.spec.format}")
+            if f".part.{self.spec.format}" not in file.name
+        )
+
+    def pending_files(self) -> list[Path]:
+        stem = self.prepare_stem()
+        return sorted(self.spec.output_dir.glob(f"{stem}*.part.{self.spec.format}"))
+
+    def _final_path(self, path: Path) -> Path:
+        marker = f".part.{self.spec.format}"
+        if not path.name.endswith(marker):
+            return path
+        return path.with_name(f"{path.name[:-len(marker)]}.{self.spec.format}")
+
+    def _finalize_file(self, path: Path) -> Path:
+        final = self._final_path(path)
+        if final == path:
+            return path
+        path.replace(final)
+        return final
+
+    def _finalize_pending_files(self) -> list[Path]:
+        return [self._finalize_file(path) for path in self.pending_files()]
 
     async def stop(self) -> None:
         self._stopping = True

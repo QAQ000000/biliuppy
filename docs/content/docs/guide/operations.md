@@ -34,11 +34,11 @@ User=biliup
 Group=biliup
 WorkingDirectory=/opt/biliuppy
 Environment=BILIUP_HOME=/var/lib/biliuppy
-ExecStart=/opt/biliuppy/.venv/bin/biliup server --host 0.0.0.0 --port 19159 --no-access-log
+ExecStart=/usr/bin/xvfb-run -a -s "-screen 0 1920x1080x24" /opt/biliuppy/.venv/bin/biliup server --host 0.0.0.0 --port 19159 --no-access-log
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=60
-KillMode=mixed
+KillMode=control-group
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=biliuppy
@@ -55,6 +55,16 @@ sudo systemctl enable --now biliuppy
 sudo systemctl status biliuppy
 journalctl -u biliuppy -f
 ```
+
+浏览器高速上传器 `bili_browser` 使用 Playwright 的可见浏览器模式，以便使用创作中心的新版分片上传协议。Linux 服务器不需要安装桌面环境，但需要安装虚拟显示和浏览器（使用运行服务的同一个用户）：
+
+```shell
+sudo apt install -y xauth xvfb
+uv sync
+uv run playwright install --with-deps chromium
+```
+
+systemd 示例中的 `xvfb-run` 会为 Chromium 提供虚拟屏幕；没有选择 `bili_browser` 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB `/dev/shm`。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN `400 InvalidArgument`。
 
 systemd 默认按宿主机 journald 策略保存 stdout/stderr。可在 `/etc/systemd/journald.conf` 中设置 `SystemMaxUse`、`RuntimeMaxUse` 或 `MaxRetentionSec`，修改后重启 `systemd-journald`。这些限制作用于整个 journal，不是单个 biliuppy 服务。
 

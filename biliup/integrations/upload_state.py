@@ -19,7 +19,7 @@ from biliup.database.session import Database
 
 T = TypeVar("T")
 logger = logging.getLogger("biliup.upload_state")
-_submit_locks: dict[str, threading.Lock] = {}
+_submit_locks: dict[str, threading.RLock] = {}
 _submit_locks_guard = threading.Lock()
 
 
@@ -41,9 +41,9 @@ class SubmitDelayError(RuntimeError):
         super().__init__(f"Bilibili submission is rate limited for another {self.retry_after:.1f} seconds")
 
 
-def account_lock_for(account_key: str) -> threading.Lock:
+def account_lock_for(account_key: str) -> threading.RLock:
     with _submit_locks_guard:
-        return _submit_locks.setdefault(account_key, threading.Lock())
+        return _submit_locks.setdefault(account_key, threading.RLock())
 
 
 def _cookie_account_id(cookie_path: Path) -> str | None:
@@ -65,7 +65,13 @@ def _cookie_account_id(cookie_path: Path) -> str | None:
 
 
 def account_key_for(cookie_path: Path, user: dict[str, Any]) -> str:
-    mid = user.get("mid") or user.get("uid") or _cookie_account_id(cookie_path)
+    cookie_mid = _cookie_account_id(cookie_path)
+    configured_mid = user.get("mid") or user.get("uid")
+    if cookie_mid and configured_mid and str(cookie_mid) != str(configured_mid):
+        raise ValueError(
+            f"Configured Bilibili account {configured_mid} does not match cookie account {cookie_mid}"
+        )
+    mid = cookie_mid or configured_mid
     if mid:
         return f"mid:{mid}"
     digest = hashlib.sha256(str(cookie_path.resolve()).casefold().encode("utf-8")).hexdigest()

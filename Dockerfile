@@ -30,16 +30,17 @@ ENV PYTHONUNBUFFERED=1 \
     BILIUP_FRONTEND_DIR=/app/out
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates ffmpeg tini \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg tini xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=wheel /wheels /wheels
 RUN python -m pip install --no-cache-dir /wheels/*.whl \
+    && python -m playwright install --with-deps chromium \
     && rm -rf /wheels
 COPY --from=frontend /src/out /app/out
 
 WORKDIR /data
 EXPOSE 19159
 VOLUME ["/data"]
-ENTRYPOINT ["/usr/bin/tini", "--", "biliup"]
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/bin/xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "biliup"]
 CMD ["server", "--host", "0.0.0.0", "--port", "19159"]

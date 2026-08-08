@@ -149,6 +149,41 @@ async def test_uploader_passes_python_biliweb_options(tmp_path: Path, monkeypatc
     with pytest.raises(ValueError, match="outside the downloads directory"):
         await upload_files([str(outside)], {"uploader": "Noop"}, paths)
 
+    incomplete = paths.downloads / "interrupted.part.mp4"
+    incomplete.write_bytes(b"partial")
+    with pytest.raises(ValueError, match="still being recorded or incomplete"):
+        await upload_files([incomplete.name], {"uploader": "Noop"}, paths)
+
+
+async def test_uploader_routes_browser_mode_with_app_paths(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    video = paths.downloads / "sample.mp4"
+    video.write_bytes(b"video")
+    captured: dict[str, Any] = {}
+
+    class FakeBiliBrowser:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def upload(self, files):
+            captured["files"] = files
+            return {"code": 0, "data": {"aid": 123, "bvid": "BV123"}}
+
+    monkeypatch.setattr("biliup.integrations.uploader.BiliBrowser", FakeBiliBrowser)
+
+    result = await upload_files(
+        [video.name],
+        {"uploader": "bili_browser", "user_cookie": "data/account.json"},
+        paths,
+    )
+
+    assert result is not None
+    assert result.aid == 123
+    assert result.bvid == "BV123"
+    assert Path(captured["profile_dir"]).parent == paths.cache / "playwright"
+    assert Path(captured["capture_dir"]) == paths.logs / "browser-captures"
+    assert captured["files"][0].video == str(video)
+
 
 async def test_scheduler_retries_upload_and_keeps_files_after_final_failure(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
@@ -229,6 +264,7 @@ async def test_scheduler_retries_upload_and_keeps_files_after_final_failure(tmp_
     }
 
     await scheduler._record_active(state, payload, FakeChecker())
+    await asyncio.gather(*tuple(state.upload_tasks))
 
     assert len(attempts) == 2
     assert attempts[0]["lines"] == "bda2"
@@ -584,6 +620,53 @@ class SchedulerChecker:
         return None
 
 
+async def test_cover_download_failure_does_not_block_recording(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    database = Database(paths.database)
+    database.migrate()
+    scheduler = RecordingScheduler(
+        database,
+        paths,
+        ConfigStore({"filtering_threshold": 0, "delay": 0}),
+        enabled=False,
+    )
+    recording_started = False
+
+    class CompleteRecorder:
+        def __init__(self, spec):
+            self.file = spec.output_dir / "complete.mp4"
+
+        def prepare_stem(self):
+            return "complete"
+
+        async def run(self, callback):
+            nonlocal recording_started
+            recording_started = True
+            self.file.write_bytes(b"complete")
+            await callback(self.file)
+
+        async def stop(self):
+            return None
+
+    async def failing_cover(*_args):
+        raise OSError("cover CDN unavailable")
+
+    monkeypatch.setattr("biliup.services.scheduler.FFmpegRecorder", CompleteRecorder)
+    monkeypatch.setattr(scheduler, "_download_cover", failing_cover)
+
+    await scheduler._record_active(
+        WorkerState(streamer_id=7),
+        scheduler_payload(),
+        SchedulerChecker(),
+    )
+
+    assert recording_started is True
+    with database.session_factory() as session:
+        history = session.query(StreamerInfo).one()
+        assert history.live_cover_path == ""
+    database.dispose()
+
+
 async def test_scheduler_pause_cancels_recording_without_history_or_upload(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     database = Database(paths.database)
@@ -751,10 +834,13 @@ async def test_scheduler_pause_during_upload_finishes_session(tmp_path: Path, mo
     await asyncio.wait_for(upload_started.wait(), timeout=1)
 
     assert state.capture_active is False
+    assert task.done()
+    upload_tasks = tuple(state.upload_tasks)
+    assert len(upload_tasks) == 1
     await scheduler.set_paused(state.streamer_id, True)
-    assert not task.done()
+    assert not upload_tasks[0].done()
     release_upload.set()
-    await asyncio.wait_for(task, timeout=1)
+    await asyncio.wait_for(upload_tasks[0], timeout=1)
 
     assert state.paused is True
     assert state.status == "Paused"
@@ -1032,11 +1118,13 @@ async def test_download_slot_is_released_before_upload(tmp_path: Path, monkeypat
     monkeypatch.setattr(scheduler, "_upload", assert_slot_released)
     payload = scheduler_payload(upload_streamers_id=template_id)
     payload["postprocessor"] = ["rm"]
+    state = WorkerState(streamer_id=7)
     await scheduler._record_active(
-        WorkerState(streamer_id=7),
+        state,
         payload,
         SchedulerChecker(),
     )
+    await asyncio.gather(*tuple(state.upload_tasks))
     assert (paths.downloads / "complete.mp4").exists()
     with database.session_factory() as session:
         assert session.query(PendingSubmission).count() == 1

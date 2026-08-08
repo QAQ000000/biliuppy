@@ -15,10 +15,31 @@ class UploadRejectedError(RuntimeError):
         super().__init__(f"Bilibili rejected the submission: code={self.code} message={message}")
 
 
+class UploadCancelledError(RuntimeError):
+    pass
+
+
+class UploadOutcomeUnknownError(RuntimeError):
+    """Submission may have reached Bilibili, so automatic retry is unsafe."""
+
+
+class TransientUploadError(RuntimeError):
+    """The upload failed before submission and can be retried safely."""
+
+
 def is_transient_upload_error(error: BaseException) -> bool:
     current: BaseException | None = error
     while current is not None:
-        if isinstance(current, (asyncio.TimeoutError, aiohttp.ClientError, requests.Timeout, requests.ConnectionError)):
+        if isinstance(
+            current,
+            (
+                TransientUploadError,
+                asyncio.TimeoutError,
+                aiohttp.ClientError,
+                requests.Timeout,
+                requests.ConnectionError,
+            ),
+        ):
             return True
         if isinstance(current, requests.HTTPError):
             status = current.response.status_code if current.response is not None else None

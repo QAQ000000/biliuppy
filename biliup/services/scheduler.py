@@ -21,6 +21,7 @@ import biliup.platforms
 from biliup.common.util import client
 from biliup.config import ConfigStore
 from biliup.core import AppPaths
+from biliup.core.redaction import redact_sensitive_text
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo, UploadStreamer
 from biliup.database.session import Database
 from biliup.engine import Plugin, StreamProbeResult, StreamStatus
@@ -33,6 +34,7 @@ from .history import prune_history
 from .hooks import HookRunner
 from .recorder import FFmpegRecorder, RecorderError, RecorderSpec, RecorderStorageError
 from .submission_review import SubmissionReviewService
+from .upload_templates import render_upload_text
 
 logger = logging.getLogger("biliup.scheduler")
 
@@ -82,9 +84,11 @@ class WorkerState:
     capture_active: bool = False
     task: asyncio.Task[None] | None = field(default=None, repr=False)
     recording_task: asyncio.Task[None] | None = field(default=None, repr=False)
+    upload_tasks: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
     recorder: FFmpegRecorder | None = field(default=None, repr=False)
     wake_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     transition_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    upload_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     @property
     def error(self) -> str | None:
@@ -138,6 +142,10 @@ class RecordingScheduler:
             if state.recorder:
                 await state.recorder.stop()
         await asyncio.gather(*recording_tasks, *monitor_tasks, return_exceptions=True)
+        upload_tasks = [task for state in states for task in tuple(state.upload_tasks)]
+        for task in upload_tasks:
+            task.cancel()
+        await asyncio.gather(*upload_tasks, return_exceptions=True)
         await self.submission_reviews.stop()
         logger.info("Scheduler stopped")
         self.workers.clear()
@@ -172,6 +180,10 @@ class RecordingScheduler:
         if state.task:
             state.task.cancel()
             await asyncio.gather(state.task, return_exceptions=True)
+        upload_tasks = list(state.upload_tasks)
+        for task in upload_tasks:
+            task.cancel()
+        await asyncio.gather(*upload_tasks, return_exceptions=True)
 
     async def set_paused(self, streamer_id: int, paused: bool) -> WorkerState:
         state = self.workers.get(streamer_id)
@@ -443,7 +455,15 @@ class RecordingScheduler:
         try:
             state.recorder = FFmpegRecorder(spec)
             stem = state.recorder.prepare_stem()
-            cover_path = await self._download_cover(checker, payload, stem)
+            try:
+                cover_path = await self._download_cover(checker, payload, stem)
+            except Exception as exc:
+                cover_path = None
+                logger.warning(
+                    "Live cover download failed for %s; recording will continue without it: %s",
+                    payload["remark"],
+                    redact_sensitive_text(str(exc)),
+                )
             context["live_cover_path"] = str(cover_path) if cover_path else ""
             try:
                 checker.danmaku_init(str(self.paths.downloads / stem))
@@ -587,22 +607,9 @@ class RecordingScheduler:
                 logger.info("Pruned %s old live history records", removed_records)
         context.update({"end_time": int(datetime.now().timestamp()), "file_list": [str(file) for file in files]})
         await self.hooks.run_commands(payload["downloaded_processor"], context)
-        upload_result: UploadResult | None = None
-        upload_attempted = bool(payload["upload_streamers_id"] and files)
         if payload["upload_streamers_id"] and files:
-            upload_result = await self._upload(state, payload, context, files)
-        if upload_result is not None:
-            steps = payload["postprocessor"]
-            if upload_result.account_key == "noop":
-                await self.hooks.run_postprocessors(steps or ["rm"], files, context)
-            else:
-                configured_steps = list(steps or [])
-                immediate_steps = [step for step in configured_steps if HookRunner._normalize(step)[0] != "rm"]
-                await self.hooks.run_postprocessors(immediate_steps, files, context)
-                delete_after_review = steps is None or len(immediate_steps) != len(configured_steps)
-                if delete_after_review:
-                    self.submission_reviews.enqueue(upload_result, files)
-        elif not upload_attempted and files and payload["postprocessor"]:
+            self._schedule_upload(state, payload, context, files)
+        elif files and payload["postprocessor"]:
             await self.hooks.run_postprocessors(payload["postprocessor"], files, context)
         if error := self._disk_space_error():
             state.status = "Degraded"
@@ -610,6 +617,63 @@ class RecordingScheduler:
         else:
             state.status = "Paused" if state.paused else "Idle"
             state.monitor_error = None
+
+    def _schedule_upload(
+        self,
+        state: WorkerState,
+        payload: dict[str, Any],
+        context: dict[str, Any],
+        files: list[Path],
+    ) -> None:
+        task = asyncio.create_task(
+            self._finish_upload(state, payload, dict(context), list(files)),
+            name=f"upload-streamer-{state.streamer_id}",
+        )
+        state.upload_tasks.add(task)
+        task.add_done_callback(lambda completed: self._upload_task_done(state, completed))
+
+    def _upload_task_done(self, state: WorkerState, task: asyncio.Task[None]) -> None:
+        state.upload_tasks.discard(task)
+        if task.cancelled():
+            if not state.upload_tasks and state.upload_status in {"Waiting", "Uploading"}:
+                state.upload_status = "Idle"
+            return
+        error = task.exception()
+        if error is not None:
+            state.upload_status = "Error"
+            state.upload_error = redact_sensitive_text(str(error))[:2000]
+            logger.error(
+                "Upload completion task failed for streamer %s: %s",
+                state.streamer_id,
+                state.upload_error,
+                exc_info=(type(error), error, error.__traceback__),
+            )
+
+    async def _finish_upload(
+        self,
+        state: WorkerState,
+        payload: dict[str, Any],
+        context: dict[str, Any],
+        files: list[Path],
+    ) -> None:
+        async with state.upload_lock:
+            upload_result = await self._upload(state, payload, context, files)
+            if upload_result is None:
+                return
+            steps = payload["postprocessor"]
+            if upload_result.account_key == "noop":
+                await self.hooks.run_postprocessors(steps or ["rm"], files, context)
+                return
+            configured_steps = list(steps or [])
+            immediate_steps = [
+                step
+                for step in configured_steps
+                if HookRunner._normalize(step)[0] != "rm"
+            ]
+            await self.hooks.run_postprocessors(immediate_steps, files, context)
+            delete_after_review = steps is None or len(immediate_steps) != len(configured_steps)
+            if delete_after_review:
+                self.submission_reviews.enqueue(upload_result, files)
 
     async def _wait_for_stream_recovery(self, state: WorkerState, checker: Any) -> bool:
         grace = max(0.0, float(self.config.get("delay", 60) or 0))
@@ -704,8 +768,8 @@ class RecordingScheduler:
             if delay:
                 state.upload_status = "Waiting"
                 await asyncio.sleep(delay)
-            params["title"] = self._format_text(params.get("title") or context["room_title"], context)
-            params["description"] = self._format_text(params.get("description") or "", context)
+            params["title"] = render_upload_text(params.get("title") or context["room_title"], context)
+            params["description"] = render_upload_text(params.get("description") or "", context)
             if not params.get("cover_path") and context.get("live_cover_path"):
                 params["cover_path"] = context["live_cover_path"]
             limit = max(1, int(self.config.get("max_upload_limit", 8) or 8))
@@ -736,12 +800,3 @@ class RecordingScheduler:
         finally:
             if state.upload_status in {"Waiting", "Uploading"}:
                 state.upload_status = "Idle"
-
-    @staticmethod
-    def _format_text(template: str, context: dict[str, Any]) -> str:
-        formatted = template.format(
-            streamer=context["name"],
-            title=context["room_title"],
-            url=context["url"],
-        )
-        return time.strftime(formatted, time.localtime(context["start_time"]))

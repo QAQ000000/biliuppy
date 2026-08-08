@@ -7,6 +7,7 @@ import os
 import random
 import re
 import tempfile
+import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -27,7 +28,7 @@ from requests.adapters import HTTPAdapter, Retry
 from biliup.config import config
 from biliup.engine import Plugin
 from biliup.engine.upload import UploadBase, logger
-from biliup.integrations.upload_errors import UploadRejectedError
+from biliup.integrations.upload_errors import UploadCancelledError, UploadRejectedError
 from biliup.integrations.upload_state import UploadStateStore
 from biliup.platforms import Wbi
 
@@ -163,6 +164,7 @@ class BiliWeb(UploadBase):
         upload_state: UploadStateStore | None = None,
         submit_interval: int = 60,
         excluded_upload_lines: list[str] | None = None,
+        cancel_event: threading.Event | None = None,
     ):
         """
         :param principal:
@@ -212,8 +214,22 @@ class BiliWeb(UploadBase):
         self.upload_state = upload_state
         self.submit_interval = max(0, int(submit_interval))
         self.excluded_upload_lines = excluded_upload_lines if excluded_upload_lines is not None else []
+        self.cancel_event = cancel_event
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise UploadCancelledError("Upload cancelled during application shutdown")
 
     def upload(
+        self,
+        file_list: List[UploadBase.FileInfo],
+        database_row_id: int = 0
+    ) -> dict:
+        guard = self.upload_state.account_guard() if self.upload_state else nullcontext()
+        with guard:
+            return self._upload_locked(file_list, database_row_id)
+
+    def _upload_locked(
         self,
         file_list: List[UploadBase.FileInfo],
         database_row_id: int = 0
@@ -227,13 +243,16 @@ class BiliWeb(UploadBase):
         logger.info(f"开始上传视频 {database_row_id}")
         video = Data()
         video.dynamic = self.dynamic
-        with BiliBili(video, excluded_upload_lines=self.excluded_upload_lines) as bili:
+        with BiliBili(
+            video,
+            excluded_upload_lines=self.excluded_upload_lines,
+            cancel_event=self.cancel_event,
+        ) as bili:
             bili.app_key = self.user.get('app_key')
             bili.appsec = self.user.get('appsec')
-            guard = self.upload_state.account_guard() if self.upload_state else nullcontext()
-            with guard:
-                bili.login(self.persistence_path, self.user_cookie)
+            bili.login(self.persistence_path, self.user_cookie)
             for file in file_list:
+                self._check_cancelled()
                 video_part = self.upload_state.find_part(file.video) if self.upload_state else None
                 if video_part:
                     video_part['title'] = splitext(basename(file.video))[0]
@@ -267,6 +286,7 @@ class BiliWeb(UploadBase):
                 video.delay_time(int(time.time()) + self.dtime)
             if self.cover_path:
                 video.cover = bili.cover_up(self.cover_path).replace('http:', '')
+            self._check_cancelled()
             if self.upload_state:
                 ret = self.upload_state.submit(
                     lambda: bili.submit(self.submit_api),
@@ -318,7 +338,13 @@ class BiliWeb(UploadBase):
             return desc_v2
 
 class BiliBili:
-    def __init__(self, video: 'Data', *, excluded_upload_lines: list[str] | None = None):
+    def __init__(
+        self,
+        video: 'Data',
+        *,
+        excluded_upload_lines: list[str] | None = None,
+        cancel_event: threading.Event | None = None,
+    ):
         self.app_key = None
         self.appsec = None
         if self.app_key is None or self.appsec is None:
@@ -339,7 +365,24 @@ class BiliBili:
         self.__bili_jct = None
         self._auto_os = None
         self.excluded_upload_lines = excluded_upload_lines if excluded_upload_lines is not None else []
+        self.cancel_event = cancel_event
         self.persistence_path = 'engine/bili.cookie'
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise UploadCancelledError("Upload cancelled during application shutdown")
+
+    async def _sleep_or_cancel(self, delay: float) -> None:
+        if self.cancel_event is None:
+            await asyncio.sleep(delay)
+            return
+        deadline = asyncio.get_running_loop().time() + delay
+        while True:
+            self._check_cancelled()
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(0.25, remaining))
 
     def check_tag(self, tag):
         r = self.__session.get("https://member.bilibili.com/x/vupre/web/topic/tag/check?tag=" + tag).json()
@@ -382,7 +425,7 @@ class BiliBili:
 
     def tid_archive(self, cookies):
         requests.utils.add_dict_to_cookiejar(self.__session.cookies, self.cookie_dict(cookies))
-        response = self.__session.get("https://member.bilibili.com/x/vupre/web/archive/pre")
+        response = self.__session.get("https://member.bilibili.com/x/vupre/web/archive/pre", timeout=30)
         return response.json()
 
     def myinfo(self, cookies):
@@ -755,7 +798,7 @@ class BiliBili:
 
         async def upload_chunk(session, chunks_data, params):
             async with session.put(url, params=params, raise_for_status=True,
-                                   data=chunks_data, headers=put_headers) as r:
+                                   data=chunks_data, headers=put_headers, timeout=60) as r:
                 parts.append({"Part": {"PartNumber": params['chunk'] + 1, "ETag": r.headers['Etag']}})
                 progress.add(len(chunks_data))
 
@@ -763,7 +806,7 @@ class BiliBili:
             'uploadId': upload_id,
             'chunks': chunks,
             'total': total_size
-        }, file, chunk_size, upload_chunk, tasks=tasks)
+        }, file, chunk_size, upload_chunk, tasks=tasks, cancel_event=self.cancel_event)
         if len(parts) != chunks:
             raise RuntimeError(f"Upload incomplete: expected {chunks} parts, received {len(parts)}")
         cost = time.perf_counter() - start
@@ -826,12 +869,19 @@ class BiliBili:
 
         async def upload_chunk(session, chunks_data, params):
             async with session.post(f'{url}/{len(chunks_data)}',
-                                    data=chunks_data, headers=headers) as response:
+                                    data=chunks_data, headers=headers, timeout=60) as response:
                 ctx = await response.json()
                 parts.append({"index": params['chunk'], "ctx": ctx['ctx']})
                 progress.add(len(chunks_data))
 
-        await self._upload({}, file, chunk_size, upload_chunk, tasks=tasks)
+        await self._upload(
+            {},
+            file,
+            chunk_size,
+            upload_chunk,
+            tasks=tasks,
+            cancel_event=self.cancel_event,
+        )
         cost = time.perf_counter() - start
 
         parts.sort(key=lambda x: x['index'])
@@ -865,7 +915,7 @@ class BiliBili:
 
         async def upload_chunk(session, chunks_data, params):
             async with session.put(url, params=params, raise_for_status=True,
-                                   data=chunks_data, headers=headers):
+                                   data=chunks_data, headers=headers, timeout=60):
                 parts.append({"partNumber": params['chunk'] + 1, "eTag": "etag"})
                 progress.add(len(chunks_data))
 
@@ -873,7 +923,7 @@ class BiliBili:
             'uploadId': upload_id,
             'chunks': chunks,
             'total': total_size
-        }, file, chunk_size, upload_chunk, tasks=tasks)
+        }, file, chunk_size, upload_chunk, tasks=tasks, cancel_event=self.cancel_event)
         cost = time.perf_counter() - start
         p = {
             'name': filename,
@@ -884,6 +934,7 @@ class BiliBili:
         }
         last_error = None
         for attempt in range(1, 7):  # 一旦放弃就会丢失前面所有的进度，多试几次吧
+            self._check_cancelled()
             try:
                 r = self.__session.post(url, params=p, json={"parts": parts}, headers=headers, timeout=15).json()
                 if r.get('OK') == 1:
@@ -895,15 +946,32 @@ class BiliBili:
                 if attempt == 6:
                     break
                 logger.warning(f"请求合并分片时出现问题，15 秒后重试：{attempt}/6。{error}")
-                await asyncio.sleep(15)
+                await self._sleep_or_cancel(15)
         raise RuntimeError("Failed to complete UPOS multipart upload after 6 attempts") from last_error
 
     @staticmethod
-    async def _upload(params, file, chunk_size, afunc, tasks=3):
+    async def _upload(params, file, chunk_size, afunc, tasks=3, cancel_event=None):
         params['chunk'] = -1
+
+        def check_cancelled():
+            if cancel_event is not None and cancel_event.is_set():
+                raise UploadCancelledError("Upload cancelled during application shutdown")
+
+        async def sleep_or_cancel(delay: float):
+            if cancel_event is None:
+                await asyncio.sleep(delay)
+                return
+            deadline = asyncio.get_running_loop().time() + delay
+            while True:
+                check_cancelled()
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    return
+                await asyncio.sleep(min(0.25, remaining))
 
         async def upload_chunk():
             while True:
+                check_cancelled()
                 chunks_data = file.read(chunk_size)
                 if not chunks_data:
                     return
@@ -916,6 +984,7 @@ class BiliBili:
                 last_error = None
                 uploaded = False
                 for attempt in range(1, 5):
+                    check_cancelled()
                     try:
                         await afunc(session, chunks_data, clone)
                         uploaded = True
@@ -928,7 +997,7 @@ class BiliBili:
                         logger.warning(
                             f"retry chunk{clone['chunk']} >> {attempt}/4 in {delay:.1f}s. {e}"
                         )
-                        await asyncio.sleep(delay)
+                        await sleep_or_cancel(delay)
                 if not uploaded:
                     raise RuntimeError(
                         f"Chunk {clone['chunk']} upload failed after 4 attempts"

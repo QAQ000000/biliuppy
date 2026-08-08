@@ -142,7 +142,9 @@ def test_frontend_api_contract(tmp_path: Path) -> None:
 
         video = tmp_path / "downloads" / "sample.mp4"
         video.write_bytes(b"video")
+        (tmp_path / "downloads" / "interrupted.part.mp4").write_bytes(b"partial")
         assert client.get("/v1/videos").json()[0]["name"] == "sample.mp4"
+        assert len(client.get("/v1/videos").json()) == 1
         assert client.get("/static/sample.mp4").content == b"video"
 
         accepted = client.post(
@@ -213,6 +215,52 @@ def test_manual_upload_deduplicates_active_jobs_and_rejects_over_capacity(
         resubmitted = client.post("/v1/uploads", json=payload)
         assert resubmitted.status_code == 200
         assert resubmitted.json()["task"] != task_id
+
+
+def test_manual_upload_expands_history_backed_template_fields(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+    uploaded = Event()
+
+    async def capture_upload(files, params, *_args, **_kwargs):
+        captured["files"] = files
+        captured["params"] = params
+        uploaded.set()
+
+    monkeypatch.setattr("biliup.api.routers.uploads.upload_files", capture_upload)
+    with make_client(tmp_path) as client:
+        video = tmp_path / "downloads" / "recording.mp4"
+        video.write_bytes(b"video")
+        with client.app.state.context.database.session_factory.begin() as session:
+            history = StreamerInfo(
+                name="主播名",
+                url="https://live.bilibili.com/123",
+                title="直播标题",
+                date=datetime(2026, 8, 6, 21, 30),
+                live_cover_path="",
+            )
+            history.files.append(FileItem(file=str(video)))
+            session.add(history)
+
+        response = client.post(
+            "/v1/uploads",
+            json={
+                "files": ["recording.mp4"],
+                "params": {
+                    "template_name": "manual",
+                    "uploader": "Noop",
+                    "title": "{streamer}-{title}-%Y",
+                    "description": "回放来源：{url}",
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        assert uploaded.wait(1)
+
+    assert captured["files"] == ["recording.mp4"]
+    assert captured["params"]["title"] == "主播名-直播标题-2026"
+    assert captured["params"]["description"] == "回放来源：https://live.bilibili.com/123"
+    assert captured["params"]["source_url"] == "https://live.bilibili.com/123"
 
 
 def test_manual_upload_request_limits_are_enforced(tmp_path: Path) -> None:

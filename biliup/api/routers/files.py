@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from biliup import __version__
+from biliup.core.media import is_recording_work_file
 from biliup.database.models import FileItem, LiveStreamer, StreamerInfo
 from biliup.services.history import prune_history
 
@@ -20,7 +21,11 @@ MEDIA_EXTENSIONS = {".mp4", ".flv", ".3gp", ".webm", ".mkv", ".ts"}
 def list_videos(context: AppContext = Depends(get_context)) -> list[dict]:
     result = []
     for index, path in enumerate(sorted(context.paths.downloads.iterdir()), start=1):
-        if not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
+        if (
+            not path.is_file()
+            or path.suffix.lower() not in MEDIA_EXTENSIONS
+            or is_recording_work_file(path)
+        ):
             continue
         stat = path.stat()
         result.append({"key": index, "name": path.name, "updateTime": int(stat.st_mtime), "size": stat.st_size})

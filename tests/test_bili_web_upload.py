@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +12,7 @@ import requests
 
 from biliup.engine.decorators import Plugin
 from biliup.engine.upload import UploadBase
-from biliup.integrations.upload_errors import is_transient_upload_error
+from biliup.integrations.upload_errors import UploadCancelledError, is_transient_upload_error
 from biliup.integrations.uploaders.bili_web import (
     BiliBili,
     BiliWeb,
@@ -505,6 +506,37 @@ async def test_upload_accepts_success_on_final_retry(monkeypatch) -> None:
     await BiliBili._upload({}, BytesIO(b"video"), 5, eventually_succeeds, tasks=1)
 
     assert attempts == 4
+
+
+async def test_upload_cancellation_stops_before_remaining_chunks(monkeypatch) -> None:
+    cancel_event = threading.Event()
+    attempts = 0
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+    async def cancel_after_first_chunk(_session, _chunk, _params):
+        nonlocal attempts
+        attempts += 1
+        cancel_event.set()
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.aiohttp.ClientSession", FakeSession)
+
+    with pytest.raises(UploadCancelledError, match="Upload cancelled"):
+        await BiliBili._upload(
+            {},
+            BytesIO(b"two chunks"),
+            5,
+            cancel_after_first_chunk,
+            tasks=1,
+            cancel_event=cancel_event,
+        )
+
+    assert attempts == 1
 
 
 async def test_upload_cancels_sibling_workers_before_session_closes(monkeypatch) -> None:

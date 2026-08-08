@@ -4,15 +4,44 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from biliup.database.models import UploadStreamer
-from biliup.integrations.uploader import upload_files, upload_idempotency_key
+from biliup.database.models import FileItem, UploadStreamer
+from biliup.integrations.uploader import resolve_upload_files, upload_files, upload_idempotency_key
 from biliup.services import JobAdmissionClosedError, JobCapacityError
+from biliup.services.upload_templates import render_upload_text
 
 from ..context import AppContext
 from ..dependencies import get_context, get_session
 from ..schemas import ManualUploadInput, UploadStreamerInput, orm_dict
 
 router = APIRouter()
+
+
+def _manual_template_context(files: list[str], context: AppContext) -> dict:
+    resolved = resolve_upload_files(files, context.paths)
+    first = resolved[0]
+    template_context = {
+        "name": first.stem,
+        "room_title": first.stem,
+        "url": "",
+        "start_time": int(first.stat().st_mtime),
+    }
+    with context.database.session_factory() as session:
+        item = session.scalar(
+            select(FileItem)
+            .where(FileItem.file == str(first))
+            .order_by(FileItem.id.desc())
+        )
+        if item is not None:
+            info = item.streamer_info
+            template_context.update(
+                {
+                    "name": info.name,
+                    "room_title": info.title,
+                    "url": info.url,
+                    "start_time": int(info.date.timestamp()),
+                }
+            )
+    return template_context
 
 
 @router.get("/v1/upload/streamers")
@@ -62,6 +91,16 @@ async def manual_upload(payload: ManualUploadInput, context: AppContext = Depend
         params[key] = context.config.get(key)
     params["user"] = context.config.get("user", {})
     try:
+        template_context = _manual_template_context(payload.files, context)
+        params["title"] = render_upload_text(
+            params.get("title") or template_context["room_title"],
+            template_context,
+        )
+        params["description"] = render_upload_text(
+            params.get("description") or "",
+            template_context,
+        )
+        params["source_url"] = template_context["url"]
         idempotency_key = upload_idempotency_key(payload.files, params, context.paths)
         job = context.jobs.submit(
             "upload",

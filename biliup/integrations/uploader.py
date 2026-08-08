@@ -11,15 +11,17 @@ from pathlib import Path
 from typing import Any
 
 from biliup.core import AppPaths
+from biliup.core.media import is_recording_work_file
 from biliup.database.session import Database
 from biliup.engine.upload import UploadBase
-from biliup.integrations.upload_errors import is_transient_upload_error
+from biliup.integrations.upload_errors import UploadCancelledError, is_transient_upload_error
 from biliup.integrations.upload_state import (
     SubmitDelayError,
     UploadResult,
     UploadStateStore,
     account_key_for,
 )
+from biliup.integrations.uploaders.bili_browser import BiliBrowser
 from biliup.integrations.uploaders.bili_web import BiliWeb
 
 logger = logging.getLogger("biliup.uploader")
@@ -72,19 +74,21 @@ async def shutdown_upload_executor() -> None:
         await asyncio.to_thread(executor.shutdown, wait=True, cancel_futures=True)
 
 
-def _resolve_files(files: list[str], paths: AppPaths) -> list[Path]:
+def resolve_upload_files(files: list[str], paths: AppPaths) -> list[Path]:
     resolved: list[Path] = []
     for value in files:
         candidate = Path(value).expanduser()
         candidate = candidate.resolve() if candidate.is_absolute() else (paths.downloads / candidate).resolve()
         if paths.downloads not in candidate.parents or not candidate.is_file():
             raise ValueError(f"Upload file is outside the downloads directory: {value}")
+        if is_recording_work_file(candidate):
+            raise ValueError(f"Upload file is still being recorded or incomplete: {value}")
         resolved.append(candidate)
     return resolved
 
 
 def upload_idempotency_key(files: list[str], params: dict[str, Any], paths: AppPaths) -> str:
-    resolved = _resolve_files(files, paths)
+    resolved = resolve_upload_files(files, paths)
     if not resolved:
         raise ValueError("No files selected")
     cookie_path = paths.resolve_user_path(params.get("user_cookie") or "cookies.json")
@@ -122,7 +126,7 @@ def _upload_sync(
     uploader_name = params.get("uploader") or "bili_web"
     if uploader_name == "Noop":
         return UploadResult(aid=None, bvid=None, account_key="noop", cookie_path="")
-    if uploader_name not in {"bili_web", "bili_web_sync", "bilibili"}:
+    if uploader_name not in {"bili_web", "bili_web_sync", "bilibili", "bili_browser"}:
         raise ValueError(f"Unknown uploader: {uploader_name}")
     cookie_value = params.get("user_cookie") or "cookies.json"
     cookie_path = paths.resolve_user_path(cookie_value)
@@ -166,12 +170,17 @@ def _upload_sync(
         upload_state=upload_state,
         submit_interval=max(0, int(params.get("submit_interval") or 0)),
         excluded_upload_lines=params.setdefault("_excluded_upload_lines", []),
+        cancel_event=params.get("_cancel_event"),
+        profile_dir=paths.cache / "playwright" / hashlib.sha256(account_key.encode("utf-8")).hexdigest()[:24],
+        capture_dir=paths.logs / "browser-captures",
     )
     file_list = [UploadBase.FileInfo(str(path), None) for path in files]
     if uploader_name == "bilibili":
         from biliup.integrations.uploaders.bili_chrome import BiliChrome
 
         uploader = BiliChrome(principal=data["name"], data=data)
+    elif uploader_name == "bili_browser":
+        uploader = BiliBrowser(**common_options)
     else:
         if uploader_name == "bili_web_sync":
             logger.warning(
@@ -205,16 +214,19 @@ async def upload_files(
     max_attempts: int = 1,
 ) -> UploadResult | None:
     app_paths = paths or AppPaths.discover().ensure()
-    resolved = _resolve_files(files, app_paths)
+    resolved = resolve_upload_files(files, app_paths)
     if not resolved:
         raise ValueError("No files selected")
     transient_failures = 0
     max_attempts = max(1, int(max_attempts))
     while True:
+        cancel_event = threading.Event()
+        params.setdefault("_excluded_upload_lines", [])
+        attempt_params = {**params, "_cancel_event": cancel_event}
         executor_future = _get_upload_executor().submit(
             _upload_sync,
             resolved,
-            params,
+            attempt_params,
             app_paths,
             database,
         )
@@ -225,16 +237,21 @@ async def upload_files(
             delay = max(0.05, exc.retry_after)
             logger.info("等待账号投稿间隔 %.1f 秒，已上传分P将在稍后复用", delay)
             await asyncio.sleep(delay)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as cancellation:
             if executor_future.cancel():
                 logger.info("已取消尚未开始的排队上传任务")
                 raise
-            logger.warning("上传任务已收到取消请求，等待当前同步上传步骤安全结束")
+            cancel_event.set()
+            logger.warning("上传任务已收到取消请求，正在停止当前网络分片")
             while True:
                 try:
                     return await asyncio.shield(upload_future)
                 except asyncio.CancelledError:
                     continue
+                except UploadCancelledError:
+                    raise cancellation
+                except Exception:
+                    raise cancellation
         except Exception as exc:
             transient_failures += 1
             if transient_failures >= max_attempts or not is_transient_upload_error(exc):

@@ -55,5 +55,5 @@ print(json.dumps({
     registry = json.loads(result.stdout.strip().splitlines()[-1])
 
     assert registry["downloads"] == 0
-    assert registry["uploads"] == 4
+    assert registry["uploads"] == 5
     assert all(module.startswith("biliup.integrations.uploaders.") for module in registry["modules"])

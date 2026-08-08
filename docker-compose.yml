@@ -1,6 +1,7 @@
 services:
   biliup:
     build: .
+    shm_size: "1gb"
     image: biliup-python:1.1.7
     container_name: biliup
     restart: unless-stopped

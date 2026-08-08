@@ -8,6 +8,7 @@ import pytest
 
 from biliup.services.recorder import (
     FFmpegRecorder,
+    RecorderProcessError,
     RecorderSpec,
     RecorderStalledError,
     RecorderStorageError,
@@ -37,6 +38,114 @@ def test_http_recorder_enables_ffmpeg_reconnect(tmp_path: Path) -> None:
     assert command[command.index("-reconnect") + 1] == "1"
     assert command[command.index("-reconnect_streamed") + 1] == "1"
     assert command[command.index("-reconnect_delay_max") + 1] == "10"
+
+
+async def test_unexpected_ffmpeg_exit_leaves_incomplete_file_pending(tmp_path: Path, monkeypatch) -> None:
+    class EmptyOutput:
+        async def readline(self):
+            return b""
+
+    class FailedProcess:
+        stdout = EmptyOutput()
+        returncode = 1
+
+        async def wait(self):
+            return self.returncode
+
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+            segment_time=None,
+        )
+    )
+
+    async def fake_create_subprocess_exec(*command, **_kwargs):
+        Path(command[-1]).write_bytes(b"incomplete")
+        return FailedProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(RecorderProcessError):
+        await recorder.run()
+
+    assert recorder.output_files() == []
+    assert [path.read_bytes() for path in recorder.pending_files()] == [b"incomplete"]
+
+
+async def test_forced_stop_does_not_finalize_incomplete_file(tmp_path: Path, monkeypatch) -> None:
+    class EmptyOutput:
+        async def readline(self):
+            return b""
+
+    class StoppedProcess:
+        stdout = EmptyOutput()
+        returncode = 1
+
+        async def wait(self):
+            return self.returncode
+
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+            segment_time=None,
+        )
+    )
+    recorder._stopping = True
+
+    async def fake_create_subprocess_exec(*command, **_kwargs):
+        Path(command[-1]).write_bytes(b"interrupted")
+        return StoppedProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    assert await recorder.run() == []
+    assert [path.read_bytes() for path in recorder.pending_files()] == [b"interrupted"]
+
+
+async def test_clean_ffmpeg_exit_finalizes_working_file(tmp_path: Path, monkeypatch) -> None:
+    class EmptyOutput:
+        async def readline(self):
+            return b""
+
+    class SuccessfulProcess:
+        stdout = EmptyOutput()
+        returncode = 0
+
+        async def wait(self):
+            return self.returncode
+
+    recorder = FFmpegRecorder(
+        RecorderSpec(
+            name="demo",
+            url="https://example.invalid/live",
+            title="test",
+            stream_url="https://cdn.example.invalid/live.flv",
+            headers={},
+            output_dir=tmp_path,
+            segment_time=None,
+        )
+    )
+
+    async def fake_create_subprocess_exec(*command, **_kwargs):
+        Path(command[-1]).write_bytes(b"complete")
+        return SuccessfulProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    files = await recorder.run()
+
+    assert [path.read_bytes() for path in files] == [b"complete"]
+    assert recorder.pending_files() == []
 
 
 async def test_recorder_stall_watchdog_terminates_ffmpeg(tmp_path: Path, monkeypatch) -> None:

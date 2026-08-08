@@ -15,7 +15,13 @@ from biliup.core import AppPaths
 from biliup.database import Database
 from biliup.database.models import PendingSubmission, UploadAccountState
 from biliup.integrations import uploader as uploader_module
-from biliup.integrations.upload_errors import UploadRejectedError, is_transient_upload_error
+from biliup.integrations.upload_errors import (
+    TransientUploadError,
+    UploadCancelledError,
+    UploadOutcomeUnknownError,
+    UploadRejectedError,
+    is_transient_upload_error,
+)
 from biliup.integrations.upload_state import (
     SubmitDelayError,
     UploadResult,
@@ -88,6 +94,26 @@ def test_account_key_uses_cookie_user_id(tmp_path: Path) -> None:
     )
 
     assert account_key_for(cookie_path, {}) == "mid:123456"
+
+
+def test_account_key_rejects_configured_user_mismatch(tmp_path: Path) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text(
+        json.dumps(
+            {
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": "secret"},
+                        {"name": "DedeUserID", "value": "123456"},
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not match cookie account"):
+        account_key_for(cookie_path, {"mid": "654321"})
 
 
 def test_account_submit_gate_defers_without_sleeping(tmp_path: Path) -> None:
@@ -229,6 +255,27 @@ async def test_upload_does_not_retry_permanent_failure(tmp_path: Path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_upload_does_not_retry_unknown_submission_outcome(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    video = paths.downloads / "sample.mp4"
+    video.write_bytes(b"video")
+    attempts = 0
+
+    def uncertain_upload(_files, _params, _paths, _database):
+        nonlocal attempts
+        attempts += 1
+        raise UploadOutcomeUnknownError("submit response was lost")
+
+    monkeypatch.setattr(uploader_module, "_upload_sync", uncertain_upload)
+
+    with pytest.raises(UploadOutcomeUnknownError, match="response was lost"):
+        await upload_files([video.name], {}, paths, max_attempts=3)
+
+    assert attempts == 1
+    await uploader_module.shutdown_upload_executor()
+
+
+@pytest.mark.asyncio
 async def test_running_upload_success_is_preserved_during_shutdown(tmp_path: Path, monkeypatch) -> None:
     paths = AppPaths.discover(tmp_path).ensure()
     video = paths.downloads / "sample.mp4"
@@ -304,8 +351,37 @@ async def test_queued_upload_is_cancelled_before_it_starts(tmp_path: Path, monke
         executor.shutdown(wait=True, cancel_futures=True)
 
 
+@pytest.mark.asyncio
+async def test_running_upload_cancellation_reaches_worker_thread(tmp_path: Path, monkeypatch) -> None:
+    paths = AppPaths.discover(tmp_path).ensure()
+    video = paths.downloads / "sample.mp4"
+    video.write_bytes(b"video")
+    started = Event()
+    stopped = Event()
+
+    def cancellable_upload(_files, params, _paths, _database):
+        started.set()
+        assert params["_cancel_event"].wait(1)
+        stopped.set()
+        raise UploadCancelledError("cancelled")
+
+    monkeypatch.setattr(uploader_module, "_upload_sync", cancellable_upload)
+    task = asyncio.create_task(upload_files([video.name], {}, paths))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+        assert stopped.is_set()
+    finally:
+        await uploader_module.shutdown_upload_executor()
+
+
 def test_only_transient_upload_errors_are_retried() -> None:
     assert is_transient_upload_error(requests.ConnectionError("connection reset")) is True
+    assert is_transient_upload_error(TransientUploadError("browser navigation timed out")) is True
+    assert is_transient_upload_error(UploadOutcomeUnknownError("submit response was lost")) is False
     assert is_transient_upload_error(UploadRejectedError({"code": -412, "message": "risk control"})) is False
     assert is_transient_upload_error(ValueError("invalid title")) is False
 

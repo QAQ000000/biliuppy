@@ -96,6 +96,7 @@ const TemplateFields: React.FC<FormFCChild<StudioEntity & { isDtime: boolean }>>
         showClear
       >
         <Form.Select.Option value="bili_web">bili_web</Form.Select.Option>
+        <Form.Select.Option value="bili_browser">浏览器高速（bili_browser）</Form.Select.Option>
         <Form.Select.Option value="Noop">Noop</Form.Select.Option>
       </Form.Select>
       <Switch field="no_reprint" label="自制声明" />

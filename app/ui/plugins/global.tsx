@@ -409,6 +409,7 @@ const Global: React.FC = () => {
           initValue="Noop"
         >
           <Form.Select.Option value="bili_web">bili_web</Form.Select.Option>
+          <Form.Select.Option value="bili_browser">浏览器高速（bili_browser）</Form.Select.Option>
           <Form.Select.Option value="Noop">Noop（即不上传，但会执行后处理）</Form.Select.Option>
         </Form.Select>
         <Form.Select
