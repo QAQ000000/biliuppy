@@ -11,6 +11,8 @@ biliup 是一个多平台直播检测、录制和 B 站投稿服务。后端、�
 - WebUI 管理主播、投稿模板、录像、任务、历史和日志
 - B 站扫码登录、手动投稿和下播后自动投稿
 - UPOS 上传线路切换、分片并发、失败重试和进度日志
+- Playwright 浏览器高速上传，上传完成后由 Python API 提交稿件
+- 投稿前预览标题、简介、变量来源和多 P 顺序
 - SQLite 数据库自动迁移，兼容已有任务和历史数据
 - 日志轮转、分类查看、大小上限和清理
 - 直播历史数量上限、分页和清理，清理历史不会删除录像文件
@@ -122,7 +124,11 @@ uv run pytest -q
 4. 开播后状态进入 `Downloading`，下播后完成分段和历史入库。
 5. 有投稿模板时进入上传；投稿失败会保留录像，便于手动重试。
 
-手动上传时，WebUI 会读取提交瞬间的投稿模板。修改 `lines` 或 `threads` 后重新上传会使用新配置，不影响已经运行中的上传任务。
+手动上传时，WebUI 会读取提交瞬间的投稿模板，并在确认前预览展开后的标题、简介、元数据来源和分 P 顺序。元数据依次从直播历史、可识别的录像文件名和文件属性中恢复，多 P 按用户选择顺序投稿。
+
+使用 `bili_browser` 时，Playwright 的可见 Chromium 只负责调用创作中心新版协议高速上传视频；全部分 P 完成后，Python 使用该浏览器的当前 Cookie 调用 Web 投稿 API，提交标题、简介、标签等模板字段。只有 API 明确拒绝时才回退到页面投稿；API 超时、断连或返回结果不完整时会标记为结果未知，不自动再次投稿，以免生成重复稿件。`lines` 和 `threads` 只控制 `bili_web`，不会改变浏览器协议的线路或并发。
+
+Windows 首次使用浏览器高速上传前执行 `uv run playwright install chromium`。Linux 服务器不需要桌面环境，但需要 Chromium 和 Xvfb；完整安装及 systemd 示例见[日常运维](./docs/content/docs/guide/operations.md)。
 
 手动上传任务状态会保存在 SQLite 中，服务重启后仍可查询最近 100 条结果。重启时尚未完成的任务会标记为 `Cancelled`，不会自动重复投稿；确认 B 站稿件状态后可从投稿管理重新上传。
 
@@ -146,6 +152,7 @@ uv run biliup server --config ./public/config.yaml
 | `checker_concurrency` | 最大同时直播状态检测请求数 |
 | `recorder_stall_timeout` | 录像文件无增长多久后触发断流恢复，`0` 表示关闭 |
 | `recorder_retry_limit` / `recorder_retry_backoff` | 连续录制失败的熔断次数和指数退避起始时间 |
+| `uploader` | 投稿上传器：`bili_web` 或 `bili_browser` |
 | `lines` / `threads` | B 站上传线路和单文件并发数 |
 | `log_file_max_size_mb` | 单个日志文件大小上限，保留 5 个轮转备份 |
 | `history_max_records` | 直播历史数据库记录上限 |

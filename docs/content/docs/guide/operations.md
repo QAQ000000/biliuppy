@@ -2,7 +2,7 @@
 title = "日常运维"
 description = "状态检查、手动上传、日志、历史、备份和故障处理。"
 date = 2026-08-02T08:00:00+00:00
-updated = 2026-08-02T08:00:00+00:00
+updated = 2026-08-09T08:00:00+00:00
 draft = false
 weight = 30
 sort_by = "weight"
@@ -58,13 +58,25 @@ journalctl -u biliuppy -f
 
 浏览器高速上传器 `bili_browser` 使用 Playwright 的可见浏览器模式，以便使用创作中心的新版分片上传协议。Linux 服务器不需要安装桌面环境，但需要安装虚拟显示和浏览器（使用运行服务的同一个用户）：
 
+Windows 首次安装 Chromium：
+
+```powershell
+uv run playwright install chromium
+```
+
+Linux 安装 Chromium 和虚拟显示：
+
 ```shell
 sudo apt install -y xauth xvfb
 uv sync
 uv run playwright install --with-deps chromium
 ```
 
-systemd 示例中的 `xvfb-run` 会为 Chromium 提供虚拟屏幕；没有选择 `bili_browser` 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB `/dev/shm`。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN `400 InvalidArgument`。
+必须用实际运行 biliuppy 服务的系统账号执行 Playwright 安装，否则 systemd 启动后可能找不到 Chromium。systemd 示例中的 `xvfb-run` 会为 Chromium 提供虚拟屏幕；没有选择 `bili_browser` 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB `/dev/shm`。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN `400 InvalidArgument`。
+
+浏览器模式的完整链路是：Playwright 上传全部分 P，程序捕获每个分 P 的 `filename` 和 `biz_id/cid`，按选择顺序构造 `videos[]`，再使用当前浏览器 Cookie 调用 Python Web 投稿 API 填写并提交稿件。只有 API 返回明确拒绝时才回退到页面提交。API 超时、连接中断或没有返回 `aid/bvid` 时属于“结果未知”，系统不会自动再次投稿；应先在创作中心确认是否已经生成稿件。
+
+创作中心偶尔出现的“批量操作”可选浮层会被自动取消。不要通过 F12 删除浮层 DOM，这会改变页面状态并使自动化选择器失效。
 
 systemd 默认按宿主机 journald 策略保存 stdout/stderr。可在 `/etc/systemd/journald.conf` 中设置 `SystemMaxUse`、`RuntimeMaxUse` 或 `MaxRetentionSec`，修改后重启 `systemd-journald`。这些限制作用于整个 journal，不是单个 biliuppy 服务。
 
@@ -98,11 +110,13 @@ FFmpeg 存活但录像文件在 `recorder_stall_timeout` 秒内没有增长时�
 2. 保存配置。
 3. 在投稿管理中重新选择录像并上传。
 
-新任务使用保存后的配置，正在上传的任务继续使用启动时的配置。上传日志会记录协议、线路、分片数量、进度、平均速度和投稿结果。
+新任务使用保存后的配置，正在上传的任务继续使用启动时的配置。`lines` 和 `threads` 只控制 `bili_web` 的 UPOS 上传；`bili_browser` 使用创作中心浏览器协议，这两个参数不会改变其线路或速度。上传日志会记录协议、线路、分片数量、进度、平均速度和投稿结果。
+
+选择文件和投稿模板后，WebUI 会在真正创建任务前显示投稿预览，包括展开变量后的标题、简介、直播间信息、元数据来源及分 P 列表。元数据优先从直播历史读取；未关联历史的录像会尝试从主播和录像文件名恢复；仍无法识别时使用文件名、修改时间等文件属性。多 P 按用户选择顺序上传和提交，不按文件名或完成时间重新排序。
 
 手动投稿最多选择 100 个文件，`threads` 范围为 1～8。活动任务总数由 `manual_upload_queue_limit` 控制；相同账号、文件和参数的活动任务会复用原任务 ID，避免重复点击造成重复投稿。
 
-最近 100 条手动上传任务状态保存在 SQLite 中，服务重启后仍可查询。重启时尚未完成的任务会标记为 `Cancelled`，系统不会自动重复投稿；应先确认 B 站稿件状态，再决定是否重新上传。
+最近 100 条手动上传任务状态保存在 SQLite 中，服务重启后仍可查询。重启时尚未完成的任务会标记为 `Cancelled`，系统不会自动重复投稿。任务显示“结果未知”或在最终提交阶段异常时，也应先在创作中心确认稿件状态，再决定是否重新上传。
 
 自动投稿成功后，默认删除操作会等待 B 站审核状态确认。审核通过后删除录像和同名 XML；审核失败、查询异常或 24 小时内无法确认时保留源文件。待审核任务保存在 SQLite 中，服务重启后会继续检查。
 

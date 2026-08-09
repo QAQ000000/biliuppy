@@ -2,7 +2,7 @@
 title = "配置说明"
 description = "全局设置、主播覆写、投稿参数和路径环境变量。"
 date = 2026-08-02T08:00:00+00:00
-updated = 2026-08-02T08:00:00+00:00
+updated = 2026-08-09T08:00:00+00:00
 draft = false
 weight = 20
 sort_by = "weight"
@@ -54,20 +54,21 @@ uv run biliup validate-config ./public/config.yaml
 
 | 字段 | 说明 |
 | --- | --- |
-| `submit_api` | 投稿提交接口，例如 `web`、`app`、`b-cut-android` |
-| `lines` | UPOS 上传线路，`AUTO` 自动选择 |
-| `threads` | 单个文件的并发分片上传数，范围 1～8 |
+| `uploader` | 上传器；`bili_web` 使用 Python UPOS API，`bili_browser` 使用 Playwright 创作中心协议 |
+| `submit_api` | 最终投稿接口，例如 `web`、`app`、`b-cut-android`；`bili_browser` 的混合链路固定使用 `web` |
+| `lines` | `bili_web` 的 UPOS 上传线路，`AUTO` 自动选择 |
+| `threads` | `bili_web` 单个文件的并发分片上传数，范围 1～8 |
 | `pool2_size` | 最大同时投稿任务数 |
 | `manual_upload_queue_limit` | 手动投稿中运行和排队的任务总数上限，默认 8 |
 | `submit_interval` | 同一账号两次最终投稿的最短间隔，默认 60 秒，不影响分P上传 |
 
-常用线路包括 `bda2`、`bldsa`、`qn`、`tx` 和 `txa`。线路效果与运营商和所在地区有关，应以实际上传日志为准。并发数不是越大越好，通常从 `3` 开始测试，部分线路会限制并发数。
+常用线路包括 `bda2`、`bldsa`、`qn`、`tx` 和 `txa`。线路效果与运营商和所在地区有关，应以实际上传日志为准。并发数不是越大越好，通常从 `3` 开始测试，部分线路会限制并发数。这些设置只作用于 `bili_web`；`bili_browser` 的线路和并发由创作中心协议决定。
 
 手动重新上传会读取提交时的最新模板和全局设置。修改线路不会改变已经运行中的上传任务。
 
 同一账号、文件和投稿参数的手动任务仍在活动时，重复请求会返回原任务，不会再次投稿。达到 `manual_upload_queue_limit` 后接口返回 `429`；任务结束后可以重新提交。
 
-已上传分P会在 SQLite 中缓存 3 天。最终投稿失败时，使用同一账号重新上传相同文件会复用缓存；投稿成功后缓存立即清除。
+`bili_web` 已上传的分 P 会在 SQLite 中缓存 3 天。最终投稿失败时，使用同一账号重新上传相同文件可复用缓存；投稿成功后缓存立即清除。`bili_browser` 当前会重新上传所选文件，不复用该分 P 缓存。
 
 ## 日志与历史
 
