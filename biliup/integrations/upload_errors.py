@@ -23,6 +23,10 @@ class UploadOutcomeUnknownError(RuntimeError):
     """Submission may have reached Bilibili, so automatic retry is unsafe."""
 
 
+class UploadSubmissionRetryExhaustedError(RuntimeError):
+    """Uploaded parts are complete, but submission retries were exhausted."""
+
+
 class TransientUploadError(RuntimeError):
     """The upload failed before submission and can be retried safely."""
 
@@ -30,6 +34,8 @@ class TransientUploadError(RuntimeError):
 def is_transient_upload_error(error: BaseException) -> bool:
     current: BaseException | None = error
     while current is not None:
+        if isinstance(current, (UploadOutcomeUnknownError, UploadSubmissionRetryExhaustedError)):
+            return False
         if isinstance(
             current,
             (
@@ -47,6 +53,8 @@ def is_transient_upload_error(error: BaseException) -> bool:
         if isinstance(current, JSONDecodeError):
             return True
         if isinstance(current, UploadRejectedError):
+            if current.code == 21615:
+                return True
             message = str(current).lower()
             return any(marker in message for marker in ("网络繁忙", "服务繁忙", "稍后再试", "temporarily unavailable"))
         current = current.__cause__ or current.__context__

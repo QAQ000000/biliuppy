@@ -8,9 +8,9 @@ import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from biliup.engine import Plugin
 from biliup.engine.upload import UploadBase
@@ -19,6 +19,8 @@ from biliup.integrations.upload_errors import (
     UploadCancelledError,
     UploadOutcomeUnknownError,
     UploadRejectedError,
+    UploadSubmissionRetryExhaustedError,
+    is_transient_upload_error,
 )
 from biliup.integrations.upload_state import UploadStateStore, account_key_for, account_lock_for
 
@@ -36,6 +38,7 @@ HUMAN_TYPE_BY_TID = {
     250: "旅游出行",
 }
 OPTIONAL_BROWSER_FLAGS = {"杜比音效", "Hi-Res无损音质"}
+API_SUBMIT_RETRY_DELAYS = (2, 4, 8, 16, 30)
 
 
 def load_browser_cookies(path: str | Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -138,6 +141,26 @@ def browser_uploaded_part(response: Any) -> tuple[str, dict[str, Any]] | None:
     }
 
 
+def remote_upload_key(filename: str) -> str:
+    return PurePosixPath(unquote(str(filename).replace("\\", "/"))).stem
+
+
+def browser_completed_upload(response: Any) -> str | None:
+    if response.request.method != "POST" or not 200 <= int(response.status) < 300:
+        return None
+    parsed = urlsplit(response.url)
+    if not parsed.hostname or not parsed.hostname.endswith(".bilivideo.com"):
+        return None
+    query = {key.lower(): values for key, values in parse_qs(parsed.query).items()}
+    if "uploadid" not in query or "partnumber" in query:
+        return None
+    operation = query.get("x-id", [""])[0].lower()
+    if operation and operation != "completemultipartupload":
+        return None
+    key = remote_upload_key(parsed.path)
+    return key or None
+
+
 def ordered_browser_parts(
     files: list[Path],
     captured: dict[str, list[dict[str, Any]]],
@@ -167,9 +190,12 @@ def ordered_browser_parts(
 def browser_api_ready(
     files: list[Path],
     captured: dict[str, list[dict[str, Any]]],
-    body: str,
+    completed_uploads: set[str],
 ) -> bool:
-    return upload_finished(body) and ordered_browser_parts(files, captured) is not None
+    parts = ordered_browser_parts(files, captured)
+    return parts is not None and all(
+        remote_upload_key(str(part["filename"])) in completed_uploads for part in parts
+    )
 
 
 def target_closed_error(error: BaseException) -> bool:
@@ -328,6 +354,7 @@ class BiliBrowser(UploadBase):
             page = context.pages[0] if context.pages else context.new_page()
             submission: dict[str, Any] = {}
             uploaded_parts: dict[str, list[dict[str, Any]]] = {}
+            completed_uploads: set[str] = set()
 
             def capture_submission(response: Any) -> None:
                 if urlsplit(response.url).path != SUBMIT_PATH or response.request.method != "POST":
@@ -347,10 +374,26 @@ class BiliBrowser(UploadBase):
                     return
                 original_name, part = captured
                 uploaded_parts.setdefault(original_name, []).append(part)
-                logger.info("浏览器已捕获上传分P file=%s", original_name)
+                logger.info(
+                    "浏览器已创建分P上传会话 file=%s remote=%s",
+                    original_name,
+                    part["filename"],
+                )
+
+            def capture_completed_upload(response: Any) -> None:
+                try:
+                    remote_key = browser_completed_upload(response)
+                except Exception:
+                    logger.exception("无法解析浏览器分P完成响应")
+                    return
+                if remote_key is None or remote_key in completed_uploads:
+                    return
+                completed_uploads.add(remote_key)
+                logger.info("浏览器分P上传完成 remote=%s", remote_key)
 
             page.on("response", capture_submission)
             page.on("response", capture_uploaded_part)
+            page.on("response", capture_completed_upload)
             page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=90_000)
             page.locator(VIDEO_INPUT).wait_for(state="attached", timeout=60_000)
             self._check_cancelled()
@@ -360,9 +403,9 @@ class BiliBrowser(UploadBase):
                 sum(path.stat().st_size for path in files),
             )
             page.locator(VIDEO_INPUT).set_input_files([str(path) for path in files])
-            submit_button = self._wait_for_form(page, files, uploaded_parts)
+            submit_button = self._wait_for_form(page, files, uploaded_parts, completed_uploads)
             api_parts = ordered_browser_parts(files, uploaded_parts)
-            if api_parts is not None:
+            if api_parts is not None and browser_api_ready(files, uploaded_parts, completed_uploads):
                 logger.info("浏览器上传完成，切换 API 提交 parts=%d", len(api_parts))
                 try:
                     submitted = True
@@ -479,21 +522,40 @@ class BiliBrowser(UploadBase):
             bili.login_by_cookies(api_cookie_payload)
             if self.cover_path:
                 video.cover = bili.cover_up(str(self.cover_path.resolve())).replace("http:", "")
-            self._check_cancelled()
-            return bili.submit("web")
+            for attempt, retry_delay in enumerate((*API_SUBMIT_RETRY_DELAYS, None), start=1):
+                self._check_cancelled()
+                try:
+                    return bili.submit("web")
+                except UploadRejectedError as exc:
+                    if not is_transient_upload_error(exc):
+                        raise
+                    if retry_delay is None:
+                        raise UploadSubmissionRetryExhaustedError(
+                            f"Bilibili API remained busy after {attempt} submission attempts; "
+                            "uploaded files were not submitted again"
+                        ) from exc
+                    logger.warning(
+                        "API 投稿暂时失败，%s 秒后复用已上传分P重试 attempt=%d/%d error=%s",
+                        retry_delay,
+                        attempt + 1,
+                        len(API_SUBMIT_RETRY_DELAYS) + 1,
+                        exc,
+                    )
+                    time.sleep(retry_delay)
 
     def _wait_for_form(
         self,
         page: Any,
         files: list[Path],
         uploaded_parts: dict[str, list[dict[str, Any]]] | None = None,
+        completed_uploads: set[str] | None = None,
     ) -> Any | None:
         deadline = time.monotonic() + 12 * 60 * 60
         pending_snapshot_at = time.monotonic() + 15
         pending_snapshot_saved = False
         last_progress = ""
-        last_body = ""
         parts_wait_logged = False
+        transfer_wait_logged = False
         while time.monotonic() < deadline:
             try:
                 self._check_cancelled()
@@ -502,18 +564,22 @@ class BiliBrowser(UploadBase):
             except Exception as exc:
                 if (
                     uploaded_parts is not None
+                    and completed_uploads is not None
                     and target_closed_error(exc)
-                    and browser_api_ready(files, uploaded_parts, last_body)
+                    and browser_api_ready(files, uploaded_parts, completed_uploads)
                 ):
                     logger.warning("浏览器在上传完成后关闭，继续使用 API 投稿 parts=%d", len(files))
                     return None
                 raise
-            last_body = body
             progress = " ".join(dict.fromkeys(re.findall(r"\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*[KM]B/s", body)))
             if progress and progress != last_progress:
                 logger.info("浏览器上传进度 %s", progress)
                 last_progress = progress
-            if uploaded_parts is not None and browser_api_ready(files, uploaded_parts, body):
+            if (
+                uploaded_parts is not None
+                and completed_uploads is not None
+                and browser_api_ready(files, uploaded_parts, completed_uploads)
+            ):
                 return None
             if not last_progress and not pending_snapshot_saved and time.monotonic() >= pending_snapshot_at:
                 self._capture_page(page, "pending")
@@ -524,10 +590,19 @@ class BiliBrowser(UploadBase):
                 disabled = button.get_attribute("disabled") is not None
                 aria_disabled = button.get_attribute("aria-disabled") == "true"
                 if not disabled and not aria_disabled and upload_finished(body):
-                    if uploaded_parts is not None and ordered_browser_parts(files, uploaded_parts) is None:
-                        if not parts_wait_logged:
-                            logger.info("页面允许投稿，但仍在等待完整分P信息 files=%d", len(files))
-                            parts_wait_logged = True
+                    if uploaded_parts is not None:
+                        parts = ordered_browser_parts(files, uploaded_parts)
+                        if parts is None:
+                            if not parts_wait_logged:
+                                logger.info("页面允许投稿，但仍在等待完整分P信息 files=%d", len(files))
+                                parts_wait_logged = True
+                        elif not transfer_wait_logged:
+                            logger.info(
+                                "页面允许投稿，但仍在等待分P传输完成 files=%d completed=%d",
+                                len(files),
+                                len(completed_uploads or set()),
+                            )
+                            transfer_wait_logged = True
                         page.wait_for_timeout(1_000)
                         continue
                     return button

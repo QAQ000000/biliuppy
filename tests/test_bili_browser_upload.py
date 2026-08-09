@@ -5,6 +5,7 @@ import pytest
 import requests
 
 from biliup.engine.upload import UploadBase
+from biliup.integrations.upload_errors import UploadRejectedError, UploadSubmissionRetryExhaustedError
 from biliup.integrations.uploaders import bili_browser
 
 
@@ -109,6 +110,18 @@ class FakeResponse:
         }
 
 
+class FakeCompleteRequest:
+    method = "POST"
+
+
+class FakeCompleteResponse:
+    request = FakeCompleteRequest()
+
+    def __init__(self, url: str, *, status: int = 200) -> None:
+        self.url = url
+        self.status = status
+
+
 def write_cookie_file(path: Path) -> None:
     path.write_text(
         json.dumps(
@@ -204,6 +217,41 @@ def test_browser_upload_response_builds_api_video_part() -> None:
     )
 
 
+def test_browser_completion_response_matches_successful_multipart_finalize() -> None:
+    response = FakeCompleteResponse(
+        "https://jscs-luffy-upcdnbd.bilivideo.com/ugcfxever/n260808s123.mp4"
+        "?uploadId=upload-1&x-id=CompleteMultipartUpload"
+    )
+
+    assert bili_browser.browser_completed_upload(response) == "n260808s123"
+
+
+@pytest.mark.parametrize(
+    ("url", "status"),
+    [
+        pytest.param(
+            "https://jscs-luffy-upcdnbd.bilivideo.com/ugcfxever/n260808s123.mp4"
+            "?uploadId=upload-1&partNumber=3&x-id=UploadPart",
+            200,
+            id="part-upload",
+        ),
+        pytest.param(
+            "https://jscs-luffy-upcdnbd.bilivideo.com/ugcfxever/n260808s123.mp4"
+            "?uploadId=upload-1&x-id=CompleteMultipartUpload",
+            500,
+            id="failed-finalize",
+        ),
+        pytest.param(
+            "https://member.bilibili.com/upload/multipart/new",
+            200,
+            id="session-create",
+        ),
+    ],
+)
+def test_browser_completion_response_rejects_non_final_requests(url: str, status: int) -> None:
+    assert bili_browser.browser_completed_upload(FakeCompleteResponse(url, status=status)) is None
+
+
 def test_browser_parts_follow_selected_file_order_and_use_latest_attempt(tmp_path: Path) -> None:
     first = tmp_path / "first.flv"
     second = tmp_path / "second.flv"
@@ -234,17 +282,21 @@ def test_browser_parts_require_every_selected_file(tmp_path: Path) -> None:
     assert bili_browser.ordered_browser_parts(files, captured) is None
 
 
-def test_api_upload_ready_requires_complete_parts_and_transfer(tmp_path: Path) -> None:
+def test_api_upload_ready_requires_every_remote_file_to_be_finalized(tmp_path: Path) -> None:
     files = [tmp_path / "first.flv", tmp_path / "second.flv"]
     complete = {
         "first.flv": [{"filename": "first", "cid": 1, "title": "first", "desc": ""}],
         "second.flv": [{"filename": "second", "cid": 2, "title": "second", "desc": ""}],
     }
 
-    assert bili_browser.browser_api_ready(files, complete, "上传中 100%")
-    assert not bili_browser.browser_api_ready(files, complete, "上传中 99%")
-    assert not bili_browser.browser_api_ready(files, complete, "P1 100% P2 等待上传")
-    assert not bili_browser.browser_api_ready(files, {"first.flv": complete["first.flv"]}, "100%")
+    assert bili_browser.browser_api_ready(files, complete, {"first", "second"})
+    assert not bili_browser.browser_api_ready(files, complete, {"first"})
+    assert not bili_browser.browser_api_ready(files, complete, set())
+    assert not bili_browser.browser_api_ready(
+        files,
+        {"first.flv": complete["first.flv"]},
+        {"first", "second"},
+    )
 
 
 def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: Path, monkeypatch) -> None:
@@ -274,6 +326,7 @@ def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: 
 
     files = [tmp_path / "sample.flv"]
     captured: dict[str, list[dict]] = {}
+    completed: set[str] = set()
     calls = 0
     uploader = bili_browser.BiliBrowser(principal="demo", data={})
 
@@ -285,7 +338,15 @@ def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: 
 
     monkeypatch.setattr(uploader, "_dismiss_known_overlays", dismiss)
 
-    assert uploader._wait_for_form(ClosingPage(), files, captured) is None
+    original_wait = ClosingPage.wait_for_timeout
+
+    def complete_upload(page, milliseconds: int) -> None:
+        original_wait(page, milliseconds)
+        completed.add("remote")
+
+    monkeypatch.setattr(ClosingPage, "wait_for_timeout", complete_upload)
+
+    assert uploader._wait_for_form(ClosingPage(), files, captured, completed) is None
 
 
 def test_wait_for_form_does_not_submit_page_before_all_parts_are_captured(tmp_path: Path) -> None:
@@ -305,6 +366,7 @@ def test_wait_for_form_does_not_submit_page_before_all_parts_are_captured(tmp_pa
             captured["second.flv"] = [
                 {"filename": "second", "cid": 2, "title": "second", "desc": ""}
             ]
+            completed.update({"first", "second"})
 
         body = type("Body", (), {"inner_text": lambda _self, **_kwargs: "上传中 100%"})()
 
@@ -312,9 +374,10 @@ def test_wait_for_form_does_not_submit_page_before_all_parts_are_captured(tmp_pa
     captured = {
         "first.flv": [{"filename": "first", "cid": 1, "title": "first", "desc": ""}],
     }
+    completed: set[str] = {"first"}
     uploader = bili_browser.BiliBrowser(principal="demo", data={})
 
-    assert uploader._wait_for_form(Page(), files, captured) is None
+    assert uploader._wait_for_form(Page(), files, captured, completed) is None
 
 
 def test_api_submission_uses_browser_cookies_and_template_fields(tmp_path: Path, monkeypatch) -> None:
@@ -417,6 +480,106 @@ def test_api_submission_falls_back_to_stored_cookies_when_browser_closed(tmp_pat
 
     assert result["data"]["aid"] == 123
     assert calls["cookies"]["cookie_info"]["cookies"][0]["name"] == "SESSDATA"
+
+
+def test_api_submission_retries_explicit_busy_response_without_reupload(tmp_path: Path, monkeypatch) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    write_cookie_file(cookie_path)
+    responses = [
+        UploadRejectedError({"code": 21615, "message": "网络繁忙 请稍后再试"}),
+        UploadRejectedError({"code": 21615, "message": "网络繁忙 请稍后再试"}),
+        {"code": 0, "data": {"aid": 123}},
+    ]
+    sleeps: list[int] = []
+
+    class FakeContext:
+        def cookies(self):
+            return []
+
+    class FakeBiliBili:
+        def __init__(self, _video, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def login_by_cookies(self, _payload):
+            pass
+
+        def submit(self, _submit_api):
+            result = responses.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.BiliBili", FakeBiliBili)
+    monkeypatch.setattr(bili_browser.time, "sleep", sleeps.append)
+    uploader = bili_browser.BiliBrowser(
+        principal="demo",
+        data={"format_title": "title"},
+        user_cookie=str(cookie_path),
+        copyright=1,
+    )
+
+    result = uploader._submit_via_api(
+        FakeContext(),
+        {"cookie_info": {"cookies": []}},
+        [{"filename": "remote", "cid": 456, "title": "part", "desc": ""}],
+    )
+
+    assert result["data"]["aid"] == 123
+    assert sleeps == [2, 4]
+
+
+def test_api_submission_stops_after_bounded_busy_retries(tmp_path: Path, monkeypatch) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    write_cookie_file(cookie_path)
+    attempts = 0
+    sleeps: list[int] = []
+
+    class FakeContext:
+        def cookies(self):
+            return []
+
+    class FakeBiliBili:
+        def __init__(self, _video, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def login_by_cookies(self, _payload):
+            pass
+
+        def submit(self, _submit_api):
+            nonlocal attempts
+            attempts += 1
+            raise UploadRejectedError({"code": 21615, "message": "网络繁忙 请稍后再试"})
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.BiliBili", FakeBiliBili)
+    monkeypatch.setattr(bili_browser.time, "sleep", sleeps.append)
+    uploader = bili_browser.BiliBrowser(
+        principal="demo",
+        data={"format_title": "title"},
+        user_cookie=str(cookie_path),
+        copyright=1,
+    )
+
+    with pytest.raises(UploadSubmissionRetryExhaustedError, match="remained busy"):
+        uploader._submit_via_api(
+            FakeContext(),
+            {"cookie_info": {"cookies": []}},
+            [{"filename": "remote", "cid": 456, "title": "part", "desc": ""}],
+        )
+
+    assert attempts == 6
+    assert sleeps == [2, 4, 8, 16, 30]
 
 
 @pytest.mark.parametrize(

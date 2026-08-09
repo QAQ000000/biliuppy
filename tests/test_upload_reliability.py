@@ -20,6 +20,7 @@ from biliup.integrations.upload_errors import (
     UploadCancelledError,
     UploadOutcomeUnknownError,
     UploadRejectedError,
+    UploadSubmissionRetryExhaustedError,
     is_transient_upload_error,
 )
 from biliup.integrations.upload_state import (
@@ -384,6 +385,18 @@ def test_only_transient_upload_errors_are_retried() -> None:
     assert is_transient_upload_error(UploadOutcomeUnknownError("submit response was lost")) is False
     assert is_transient_upload_error(UploadRejectedError({"code": -412, "message": "risk control"})) is False
     assert is_transient_upload_error(ValueError("invalid title")) is False
+
+
+def test_unsafe_retry_boundaries_override_transient_causes() -> None:
+    transient_rejection = UploadRejectedError({"code": 21615, "message": "busy"})
+    exhausted = UploadSubmissionRetryExhaustedError("submission retries exhausted")
+    exhausted.__cause__ = transient_rejection
+    unknown = UploadOutcomeUnknownError("submit response was lost")
+    unknown.__cause__ = requests.Timeout("response timeout")
+
+    assert is_transient_upload_error(transient_rejection) is True
+    assert is_transient_upload_error(exhausted) is False
+    assert is_transient_upload_error(unknown) is False
 
 
 @pytest.mark.asyncio
