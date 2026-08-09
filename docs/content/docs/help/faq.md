@@ -53,9 +53,18 @@ top = false
 
 `bili_browser` 使用 Playwright 的可见 Chromium 上传视频，程序等待并捕获全部分 P 的上传结果，再按选择顺序使用 Python Web API 提交标题、简介、标签等稿件信息。只有 API 明确拒绝时才回退页面提交；超时或连接中断后不会盲目二次投稿。
 
-## Linux 为什么需要 Xvfb？
+## Linux 报“Browser upload requires a display”怎么办？
 
-浏览器高速上传必须以可见浏览器模式运行，纯命令行服务器没有显示设备。Xvfb 提供虚拟屏幕，不需要安装 GNOME、KDE 等完整桌面环境。请用运行服务的账号执行 `uv run playwright install --with-deps chromium`，并通过 `xvfb-run` 启动服务。
+浏览器高速上传必须以可见浏览器模式运行，纯命令行服务器没有显示设备。Xvfb 提供虚拟屏幕，不需要安装 GNOME、KDE 等完整桌面环境。安装并使用虚拟显示启动：
+
+```shell
+sudo apt install -y xauth xvfb
+uv run playwright install --with-deps chromium
+xvfb-run -a -s "-screen 0 1920x1080x24" \
+  uv run biliup server --host 0.0.0.0 --port 19159
+```
+
+Playwright Chromium 必须由实际运行服务的系统账号安装。使用 systemd、宝塔面板或 Supervisor 时，应把 `xvfb-run` 写入真正的启动命令并重启服务；只安装 Xvfb 或只设置 `DISPLAY=:99` 不会自动创建可用的显示服务。
 
 ## 多 P 会乱序或漏传吗？
 

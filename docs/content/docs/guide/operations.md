@@ -72,7 +72,18 @@ uv sync
 uv run playwright install --with-deps chromium
 ```
 
-必须用实际运行 biliuppy 服务的系统账号执行 Playwright 安装，否则 systemd 启动后可能找不到 Chromium。systemd 示例中的 `xvfb-run` 会为 Chromium 提供虚拟屏幕；没有选择 `bili_browser` 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB `/dev/shm`。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN `400 InvalidArgument`。
+直接从终端启动时，原来的 `uv run biliup server ...` 也必须包在 `xvfb-run` 中：
+
+```shell
+xvfb-run -a -s "-screen 0 1920x1080x24" \
+  uv run biliup server --host 0.0.0.0 --port 19159
+```
+
+使用宝塔面板、Supervisor 或其他进程守护工具时，同样应把完整的 `xvfb-run` 命令填入启动命令，不能只在安装时运行一次 Xvfb。systemd 应使用本页示例中以 `/usr/bin/xvfb-run` 开头的 `ExecStart`，修改后执行 `systemctl daemon-reload` 并重启服务。
+
+如果日志出现 `RuntimeError: Browser upload requires a display`，说明当前 biliuppy 进程既没有 `DISPLAY`，也没有 `WAYLAND_DISPLAY`。不要只执行 `export DISPLAY=:99`；除非该显示编号上确实有正在运行的 X Server，否则 Chromium 仍无法启动。应停止原进程并通过上面的 `xvfb-run` 命令重新启动。
+
+必须用实际运行 biliuppy 服务的系统账号执行 Playwright 安装，否则 systemd 或进程守护工具启动后可能找不到 Chromium。没有选择 `bili_browser` 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB `/dev/shm`。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN `400 InvalidArgument`。
 
 浏览器模式的完整链路是：Playwright 上传全部分 P，程序捕获每个分 P 的 `filename` 和 `biz_id/cid`，按选择顺序构造 `videos[]`，再使用当前浏览器 Cookie 调用 Python Web 投稿 API 填写并提交稿件。只有 API 返回明确拒绝时才回退到页面提交。API 超时、连接中断或没有返回 `aid/bvid` 时属于“结果未知”，系统不会自动再次投稿；应先在创作中心确认是否已经生成稿件。
 
