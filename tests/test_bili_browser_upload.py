@@ -288,6 +288,35 @@ def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: 
     assert uploader._wait_for_form(ClosingPage(), files, captured) is None
 
 
+def test_wait_for_form_does_not_submit_page_before_all_parts_are_captured(tmp_path: Path) -> None:
+    class ReadyButton(FakeLocator):
+        def get_attribute(self, _name: str) -> None:
+            return None
+
+    class Page:
+        def locator(self, selector: str) -> FakeLocator:
+            assert selector == "body"
+            return self.body
+
+        def get_by_text(self, _value, **_kwargs) -> ReadyButton:
+            return ReadyButton()
+
+        def wait_for_timeout(self, _milliseconds: int) -> None:
+            captured["second.flv"] = [
+                {"filename": "second", "cid": 2, "title": "second", "desc": ""}
+            ]
+
+        body = type("Body", (), {"inner_text": lambda _self, **_kwargs: "上传中 100%"})()
+
+    files = [tmp_path / "first.flv", tmp_path / "second.flv"]
+    captured = {
+        "first.flv": [{"filename": "first", "cid": 1, "title": "first", "desc": ""}],
+    }
+    uploader = bili_browser.BiliBrowser(principal="demo", data={})
+
+    assert uploader._wait_for_form(Page(), files, captured) is None
+
+
 def test_api_submission_uses_browser_cookies_and_template_fields(tmp_path: Path, monkeypatch) -> None:
     cookie_path = tmp_path / "cookies.json"
     write_cookie_file(cookie_path)

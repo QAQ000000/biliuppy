@@ -493,6 +493,7 @@ class BiliBrowser(UploadBase):
         pending_snapshot_saved = False
         last_progress = ""
         last_body = ""
+        parts_wait_logged = False
         while time.monotonic() < deadline:
             try:
                 self._check_cancelled()
@@ -523,6 +524,12 @@ class BiliBrowser(UploadBase):
                 disabled = button.get_attribute("disabled") is not None
                 aria_disabled = button.get_attribute("aria-disabled") == "true"
                 if not disabled and not aria_disabled and upload_finished(body):
+                    if uploaded_parts is not None and ordered_browser_parts(files, uploaded_parts) is None:
+                        if not parts_wait_logged:
+                            logger.info("页面允许投稿，但仍在等待完整分P信息 files=%d", len(files))
+                            parts_wait_logged = True
+                        page.wait_for_timeout(1_000)
+                        continue
                     return button
             page.wait_for_timeout(1_000)
         raise RuntimeError(f"Browser upload did not finish for {len(files)} files")
