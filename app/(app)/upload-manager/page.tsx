@@ -12,7 +12,7 @@ import {
   Transfer,
 } from '@douyinfe/semi-ui'
 import { IconCloudStroked, IconPlusCircle, IconUserListStroked } from '@douyinfe/semi-icons'
-import { SetStateAction, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@douyinfe/semi-ui'
 import { IconEdit2Stroked, IconSendStroked, IconDeleteStroked } from '@douyinfe/semi-icons'
@@ -22,6 +22,18 @@ import { useRouter } from 'next/navigation'
 import UserList from '../../ui/UserList'
 import useSWRMutation from 'swr/mutation'
 import { useBiliUsers } from '../../lib/use-streamers'
+
+type UploadPreview = {
+  title: string
+  description: string
+  dynamic: string
+  streamer: string
+  room_title: string
+  url: string
+  start_time: string
+  metadata_source: 'history' | 'filename' | 'file'
+  parts: { file: string; title: string }[]
+}
 
 export default function Union() {
   const { Meta } = Card
@@ -60,12 +72,15 @@ export default function Union() {
   const [selectFiles, setSelectFiles] = useState<(string | number)[]>([])
   const [selectEntity, setSelectEntity] = useState<StudioEntity>()
   const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState<UploadPreview>()
+  const [previewError, setPreviewError] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
   const showDialog = (entity: StudioEntity) => {
     setSelectEntity(entity)
     setVisibleModal(true)
   }
   const handleOk = async () => {
-    if (uploading || selectFiles.length === 0 || !selectEntity) return
+    if (uploading || previewLoading || !preview || selectFiles.length === 0 || !selectEntity) return
     setUploading(true)
     try {
       const accepted = await sendRequest<{ files: string[]; params: StudioEntity }>(
@@ -133,6 +148,43 @@ export default function Union() {
     setTransferData(values)
   }
 
+  useEffect(() => {
+    let cancelled = false
+    if (!visibleModal || !selectEntity || selectFiles.length === 0) {
+      setPreview(undefined)
+      setPreviewError('')
+      setPreviewLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    setPreviewLoading(true)
+    setPreview(undefined)
+    setPreviewError('')
+    fetcher('/v1/uploads/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: selectFiles.map(String), params: selectEntity }),
+    })
+      .then(result => {
+        if (!cancelled) setPreview(result as UploadPreview)
+      })
+      .catch(previewRequestError => {
+        if (!cancelled) {
+          setPreview(undefined)
+          setPreviewError(
+            previewRequestError instanceof Error ? previewRequestError.message : String(previewRequestError),
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [visibleModal, selectEntity, selectFiles])
+
   return (
     <>
       <UserList visible={visible} onCancel={change}></UserList>
@@ -144,7 +196,9 @@ export default function Union() {
         visible={visibleModal}
         onOk={handleOk}
         confirmLoading={uploading}
-        okButtonProps={{ disabled: uploading || selectFiles.length === 0 }}
+        okButtonProps={{
+          disabled: uploading || previewLoading || !preview || Boolean(previewError) || selectFiles.length === 0,
+        }}
         afterClose={handleAfterClose}
         onCancel={handleCancel}
         bodyStyle={{
@@ -159,6 +213,56 @@ export default function Union() {
           value={transferData}
           onChange={handleTransferChange}
         />
+        {(previewLoading || previewError || preview) && (
+          <div
+            style={{
+              borderTop: '1px solid var(--semi-color-border)',
+              marginTop: 16,
+              paddingTop: 16,
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <Text strong>投稿预览</Text>
+            {previewLoading && <div style={{ marginTop: 8 }}>正在生成...</div>}
+            {previewError && (
+              <div style={{ marginTop: 8, color: 'var(--semi-color-danger)' }}>{previewError}</div>
+            )}
+            {preview && !previewLoading && (
+              <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                <div>
+                  <Text type="tertiary">标题</Text>
+                  <div>{preview.title}</div>
+                </div>
+                <div>
+                  <Text type="tertiary">变量</Text>
+                  <div>
+                    {preview.streamer} · {preview.room_title} · {preview.start_time.replace('T', ' ')} ·{' '}
+                    {preview.metadata_source === 'history'
+                      ? '直播历史'
+                      : preview.metadata_source === 'filename'
+                        ? '文件名恢复'
+                        : '文件属性'}
+                  </div>
+                  {preview.url && <div>{preview.url}</div>}
+                </div>
+                {preview.description && (
+                  <div>
+                    <Text type="tertiary">简介</Text>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{preview.description}</div>
+                  </div>
+                )}
+                <div>
+                  <Text type="tertiary">分P ({preview.parts.length})</Text>
+                  <ol style={{ margin: '6px 0 0', paddingLeft: 24 }}>
+                    {preview.parts.map(part => (
+                      <li key={part.file}>{part.title}</li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
       <Header style={{ backgroundColor: 'var(--semi-color-bg-1)' }}>
         <nav

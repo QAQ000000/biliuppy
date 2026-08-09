@@ -133,6 +133,8 @@ async def test_uploader_passes_python_biliweb_options(tmp_path: Path, monkeypatc
     assert captured["threads"] == 6
     assert captured["user"] == {"access_token": "not-logged"}
     assert captured["user_cookie"] == str(paths.home / "data" / "account.json")
+    assert "profile_dir" not in captured
+    assert "capture_dir" not in captured
     assert captured["files"][0].video == str(video)
 
     captured.clear()

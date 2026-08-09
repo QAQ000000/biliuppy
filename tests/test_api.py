@@ -15,7 +15,7 @@ from biliup.api.app import RedactingFilter, redact_log_message
 from biliup.api.routers.logs import TAIL_MAX_BYTES, filter_log_lines, tail_lines
 from biliup.core import AppSettings
 from biliup.database import Database
-from biliup.database.models import Configuration, FileItem, StreamerInfo
+from biliup.database.models import Configuration, FileItem, LiveStreamer, StreamerInfo, UploadStreamer
 from biliup.integrations.uploader import active_upload_paths
 from biliup.services import HomeInstanceLockError
 from biliup.services.scheduler import WorkerState
@@ -281,6 +281,69 @@ def test_manual_upload_expands_history_backed_template_fields(tmp_path: Path, mo
     assert captured["params"]["title"] == "主播名-直播标题-2026"
     assert captured["params"]["description"] == "回放来源：https://live.bilibili.com/123"
     assert captured["params"]["source_url"] == "https://live.bilibili.com/123"
+
+
+def test_manual_upload_preview_recovers_unmanaged_recording_metadata(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+    uploaded = Event()
+
+    async def capture_upload(files, params, *_args, **_kwargs):
+        captured["files"] = files
+        captured["params"] = params
+        uploaded.set()
+
+    monkeypatch.setattr("biliup.api.routers.uploads.upload_files", capture_upload)
+    with make_client(tmp_path) as client:
+        filename = "装机猿2026-08-06 19_16_47下周5降价是种信念_000.flv"
+        (tmp_path / "downloads" / filename).write_bytes(b"video")
+        with client.app.state.context.database.session_factory.begin() as session:
+            template = UploadStreamer(template_name="远古时代装机猿", tags=[])
+            session.add(template)
+            session.flush()
+            session.add(
+                LiveStreamer(
+                    url="https://live.bilibili.com/1361615",
+                    remark="装机猿",
+                    upload_streamers_id=template.id,
+                )
+            )
+            template_id = template.id
+
+        payload = {
+            "files": [filename],
+            "params": {
+                "id": template_id,
+                "template_name": "远古时代装机猿",
+                "uploader": "Noop",
+                "title": "【{streamer}】{title}%Y-%m-%d 直播回放",
+                "description": "{title} %Y-%m-%d %H:%M:%S\n{streamer}：{url}",
+                "dynamic": "{streamer} %Y-%m-%d",
+            },
+        }
+        preview_response = client.post("/v1/uploads/preview", json=payload)
+        upload_response = client.post("/v1/uploads", json=payload)
+
+        assert preview_response.status_code == 200
+        assert upload_response.status_code == 200
+        assert uploaded.wait(1)
+
+    preview = preview_response.json()
+    expected_title = "【装机猿】下周5降价是种信念2026-08-06 直播回放"
+    assert preview["title"] == expected_title
+    assert preview["description"] == (
+        "下周5降价是种信念 2026-08-06 19:16:47\n装机猿：https://live.bilibili.com/1361615"
+    )
+    assert preview["dynamic"] == "装机猿 2026-08-06"
+    assert preview["streamer"] == "装机猿"
+    assert preview["room_title"] == "下周5降价是种信念"
+    assert preview["url"] == "https://live.bilibili.com/1361615"
+    assert preview["start_time"] == "2026-08-06T19:16:47"
+    assert preview["metadata_source"] == "filename"
+    assert preview["parts"] == [{"file": filename, "title": filename.removesuffix(".flv")}]
+    assert captured["params"]["title"] == expected_title
+    assert captured["params"]["description"] == preview["description"]
+    assert captured["params"]["dynamic"] == preview["dynamic"]
+    assert captured["params"]["source_url"] == preview["url"]
 
 
 def test_manual_upload_request_limits_are_enforced(tmp_path: Path) -> None:

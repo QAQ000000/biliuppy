@@ -25,6 +25,7 @@ from biliup.integrations.upload_state import UploadStateStore, account_key_for, 
 logger = logging.getLogger("biliup")
 UPLOAD_URL = "https://member.bilibili.com/platform/upload/video/frame?page_from=creative_home_top_upload"
 SUBMIT_PATH = "/x/vu/web/add/v3"
+MULTIPART_NEW_PATH = "/upload/multipart/new"
 VIDEO_INPUT = '.bcc-upload-wrapper > input[type="file"][accept*=".mp4"]'
 HUMAN_TYPE_BY_TID = {
     21: "生活经验",
@@ -34,6 +35,7 @@ HUMAN_TYPE_BY_TID = {
     231: "科技数码",
     250: "旅游出行",
 }
+OPTIONAL_BROWSER_FLAGS = {"杜比音效", "Hi-Res无损音质"}
 
 
 def load_browser_cookies(path: str | Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -107,7 +109,56 @@ def category_names(typelist: list[dict[str, Any]], tid: int) -> tuple[str, str]:
 
 
 def upload_finished(body: str) -> bool:
+    if re.search(r"上传中|等待上传", body):
+        return False
     return "上传完成" in body or bool(re.search(r"(?<!\d)100(?:\.0+)?%", body))
+
+
+def browser_uploaded_part(response: Any) -> tuple[str, dict[str, Any]] | None:
+    if urlsplit(response.url).path != MULTIPART_NEW_PATH or response.request.method != "POST":
+        return None
+    payload = response.json()
+    if payload.get("code") != 0:
+        return None
+    data = payload.get("data") or {}
+    request_data = response.request.post_data_json or {}
+    original_name = str(request_data.get("name") or "").strip()
+    filename = str(data.get("filename") or "").strip()
+    cid = data.get("biz_id")
+    if not original_name or not filename or cid is None:
+        return None
+    return original_name, {
+        "filename": filename,
+        "cid": int(cid),
+        "title": Path(original_name).stem[:80],
+        "desc": "",
+    }
+
+
+def ordered_browser_parts(
+    files: list[Path],
+    captured: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]] | None:
+    counts: dict[str, int] = {}
+    for path in files:
+        counts[path.name] = counts.get(path.name, 0) + 1
+    selected = {
+        name: [dict(part) for part in parts[-counts[name] :]]
+        for name, parts in captured.items()
+        if name in counts and len(parts) >= counts[name]
+    }
+    if any(len(selected.get(name, [])) < count for name, count in counts.items()):
+        return None
+
+    ordered: list[dict[str, Any]] = []
+    positions: dict[str, int] = {}
+    for path in files:
+        position = positions.get(path.name, 0)
+        part = dict(selected[path.name][position])
+        part["title"] = path.stem[:80]
+        ordered.append(part)
+        positions[path.name] = position + 1
+    return ordered
 
 
 def ensure_headed_environment() -> None:
@@ -254,6 +305,7 @@ class BiliBrowser(UploadBase):
             context.add_cookies(cookies)
             page = context.pages[0] if context.pages else context.new_page()
             submission: dict[str, Any] = {}
+            uploaded_parts: dict[str, list[dict[str, Any]]] = {}
 
             def capture_submission(response: Any) -> None:
                 if urlsplit(response.url).path != SUBMIT_PATH or response.request.method != "POST":
@@ -263,7 +315,20 @@ class BiliBrowser(UploadBase):
                 except Exception:
                     logger.exception("无法解析浏览器投稿响应")
 
+            def capture_uploaded_part(response: Any) -> None:
+                try:
+                    captured = browser_uploaded_part(response)
+                except Exception:
+                    logger.exception("无法解析浏览器分P上传响应")
+                    return
+                if captured is None:
+                    return
+                original_name, part = captured
+                uploaded_parts.setdefault(original_name, []).append(part)
+                logger.info("浏览器已捕获上传分P file=%s", original_name)
+
             page.on("response", capture_submission)
+            page.on("response", capture_uploaded_part)
             page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=90_000)
             page.locator(VIDEO_INPUT).wait_for(state="attached", timeout=60_000)
             self._check_cancelled()
@@ -274,6 +339,27 @@ class BiliBrowser(UploadBase):
             )
             page.locator(VIDEO_INPUT).set_input_files([str(path) for path in files])
             submit_button = self._wait_for_form(page, files)
+            api_parts = ordered_browser_parts(files, uploaded_parts)
+            if api_parts is not None:
+                logger.info("浏览器上传完成，切换 API 提交 parts=%d", len(api_parts))
+                try:
+                    submitted = True
+                    result = self._submit_via_api(context, payload, api_parts)
+                except UploadRejectedError as exc:
+                    logger.warning("API 投稿被明确拒绝，退回浏览器页面提交: %s", exc)
+                else:
+                    data = result.get("data") or {}
+                    if not data.get("aid") and not data.get("bvid"):
+                        raise UploadOutcomeUnknownError("Bilibili API did not return aid or bvid")
+                    logger.info(
+                        "API 投稿成功 code=%s aid=%s bvid=%s",
+                        result.get("code"),
+                        data.get("aid"),
+                        data.get("bvid"),
+                    )
+                    return result
+            else:
+                logger.warning("浏览器未捕获完整分P信息，继续使用页面提交")
             self._fill_form(page)
             self._check_cancelled()
             logger.info("浏览器上传完成，准备单次提交")
@@ -323,6 +409,42 @@ class BiliBrowser(UploadBase):
                 except Exception:
                     logger.exception("停止浏览器上传驱动失败")
 
+    def _submit_via_api(
+        self,
+        context: Any,
+        cookie_payload: dict[str, Any],
+        parts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        from biliup.integrations.uploaders.bili_web import BiliBili, Data
+
+        current_cookies = context.cookies()
+        api_cookie_payload = dict(cookie_payload)
+        api_cookie_payload["cookie_info"] = {"cookies": current_cookies}
+        video = Data(
+            copyright=self.copyright,
+            source=self.copyright_source if self.copyright == 2 else "",
+            tid=self.tid,
+            title=str(self.data.get("format_title") or self.principal)[:80],
+            desc=self.description,
+            dynamic=self.dynamic,
+            tag=self.tags,
+            videos=parts,
+            dolby=int(self.flags["杜比音效"]),
+            hires=int(self.flags["Hi-Res无损音质"]),
+            no_reprint=int(self.flags["禁止转载"]),
+            is_only_self=int(self.flags["仅自己可见"]),
+            charging_pay=int(self.flags["开启充电面板"]),
+            up_selection_reply=int(self.flags["精选评论"]),
+            up_close_reply=int(self.flags["关闭评论"]),
+            up_close_danmu=int(self.flags["关闭弹幕"]),
+        )
+        with BiliBili(video, cancel_event=self.cancel_event) as bili:
+            bili.login_by_cookies(api_cookie_payload)
+            if self.cover_path:
+                video.cover = bili.cover_up(str(self.cover_path.resolve())).replace("http:", "")
+            self._check_cancelled()
+            return bili.submit("web")
+
     def _wait_for_form(self, page: Any, files: list[Path]) -> Any:
         deadline = time.monotonic() + 12 * 60 * 60
         pending_snapshot_at = time.monotonic() + 15
@@ -355,6 +477,19 @@ class BiliBrowser(UploadBase):
             acknowledgement.click()
             page.wait_for_timeout(300)
 
+        batch_title = _visible(page.get_by_text("批量操作", exact=True))
+        if batch_title is None:
+            return
+        dialog = _visible(
+            batch_title.locator("xpath=ancestor::*[.//*[normalize-space()='取消']][1]")
+        )
+        cancel = _visible(dialog.get_by_text("取消", exact=True)) if dialog is not None else None
+        if cancel is None:
+            return
+        cancel.click()
+        logger.info("浏览器已关闭可选浮层 overlay=批量操作")
+        page.wait_for_timeout(300)
+
     def _fill_form(self, page: Any) -> None:
         title = _field_near_label(page, ("稿件标题",), "input")
         if title is None:
@@ -372,16 +507,18 @@ class BiliBrowser(UploadBase):
         if copyright_option is not None:
             copyright_option.click()
         else:
-            statement = _visible(page.get_by_placeholder("请选择符合您视频内容的创作声明"))
-            if statement is None:
-                raise RuntimeError(f"Bilibili copyright option was not found: {copyright_text}")
-            statement.click()
-            page.wait_for_timeout(300)
             statement_text = "内容无需标注" if self.copyright == 1 else "内容为转载"
-            statement_option = _visible(page.get_by_text(statement_text, exact=True))
-            if statement_option is None:
-                raise RuntimeError(f"Bilibili creation statement was not found: {statement_text}")
-            statement_option.click()
+            selected_statement = _visible(page.get_by_text(statement_text, exact=True))
+            if selected_statement is None:
+                statement = _visible(page.get_by_placeholder("请选择符合您视频内容的创作声明"))
+                if statement is None:
+                    raise RuntimeError(f"Bilibili copyright option was not found: {copyright_text}")
+                statement.click()
+                page.wait_for_timeout(300)
+                statement_option = _visible(page.get_by_text(statement_text, exact=True))
+                if statement_option is None:
+                    raise RuntimeError(f"Bilibili creation statement was not found: {statement_text}")
+                statement_option.click()
         if self.copyright == 2:
             source = _field_near_label(page, ("转载来源", "来源"), "input")
             if source is None:
@@ -413,13 +550,27 @@ class BiliBrowser(UploadBase):
             if not cover.count():
                 raise RuntimeError("Bilibili cover input was not found")
             cover.last.set_input_files(str(self.cover_path.resolve()))
-        if any(self.flags.values()):
+        self._apply_submission_flags(page)
+
+    def _apply_submission_flags(self, page: Any) -> None:
+        enabled_labels = [label for label, enabled in self.flags.items() if enabled]
+        if not enabled_labels:
+            return
+        try:
             self._ensure_more_settings(page)
+        except RuntimeError:
+            if not set(enabled_labels).issubset(OPTIONAL_BROWSER_FLAGS):
+                raise
+            logger.warning("浏览器投稿页未提供音频增强设置，已跳过 options=%s", enabled_labels)
+            return
         for label, enabled in self.flags.items():
             if not enabled:
                 continue
             option = _visible(page.locator("label.bcc-checkbox").filter(has_text=label))
             if option is None:
+                if label in OPTIONAL_BROWSER_FLAGS:
+                    logger.warning("浏览器投稿页未提供可选设置，已跳过 option=%s", label)
+                    continue
                 raise RuntimeError(f"Bilibili submission option was not found: {label}")
             checkbox = option.locator('input[type="checkbox"]')
             if not checkbox.count() or not checkbox.is_checked():
@@ -436,6 +587,7 @@ class BiliBrowser(UploadBase):
                 while remove_buttons.count():
                     remove_buttons.first.click()
                     page.wait_for_timeout(100)
+            accepted_tags = 0
             for tag in self.tags:
                 tag_input.fill(tag)
                 page.wait_for_timeout(100)
@@ -448,10 +600,11 @@ class BiliBrowser(UploadBase):
                 except Exception:
                     logger.warning("浏览器跳过无效标签 tag=%s", tag)
                     continue
+                accepted_tags += 1
                 validating = page.get_by_text(re.compile("标签正在请求校验中"))
                 if validating.count() and validating.first.is_visible():
                     validating.first.wait_for(state="hidden", timeout=10_000)
-            if self.tags and not tag_container.locator(".label-item-v2-content").count():
+            if self.tags and not accepted_tags:
                 raise RuntimeError("Bilibili rejected every configured tag")
             return
 

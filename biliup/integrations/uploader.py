@@ -221,8 +221,6 @@ def _upload_sync(
         submit_interval=max(0, int(params.get("submit_interval") or 0)),
         excluded_upload_lines=params.setdefault("_excluded_upload_lines", []),
         cancel_event=params.get("_cancel_event"),
-        profile_dir=paths.cache / "playwright" / hashlib.sha256(account_key.encode("utf-8")).hexdigest()[:24],
-        capture_dir=paths.logs / "browser-captures",
     )
     file_list = [UploadBase.FileInfo(str(path), None) for path in files]
     if uploader_name == "bilibili":
@@ -230,7 +228,11 @@ def _upload_sync(
 
         uploader = BiliChrome(principal=data["name"], data=data)
     elif uploader_name == "bili_browser":
-        uploader = BiliBrowser(**common_options)
+        uploader = BiliBrowser(
+            **common_options,
+            profile_dir=paths.cache / "playwright" / hashlib.sha256(account_key.encode("utf-8")).hexdigest()[:24],
+            capture_dir=paths.logs / "browser-captures",
+        )
     else:
         if uploader_name == "bili_web_sync":
             logger.warning(
