@@ -187,15 +187,31 @@ def ordered_browser_parts(
     return ordered
 
 
+def browser_page_uploads_ready(page: Any, file_count: int) -> bool:
+    if file_count <= 0:
+        return False
+    try:
+        statuses = page.locator(".task-status.task-status-success")
+        visible_count = sum(
+            statuses.nth(index).is_visible() for index in range(statuses.count())
+        )
+    except Exception:
+        return False
+    return visible_count >= file_count
+
+
 def browser_api_ready(
     files: list[Path],
     captured: dict[str, list[dict[str, Any]]],
     completed_uploads: set[str],
+    page: Any | None = None,
 ) -> bool:
     parts = ordered_browser_parts(files, captured)
-    return parts is not None and all(
-        remote_upload_key(str(part["filename"])) in completed_uploads for part in parts
-    )
+    if parts is None:
+        return False
+    if all(remote_upload_key(str(part["filename"])) in completed_uploads for part in parts):
+        return True
+    return page is not None and browser_page_uploads_ready(page, len(files))
 
 
 def target_closed_error(error: BaseException) -> bool:
@@ -405,7 +421,7 @@ class BiliBrowser(UploadBase):
             page.locator(VIDEO_INPUT).set_input_files([str(path) for path in files])
             submit_button = self._wait_for_form(page, files, uploaded_parts, completed_uploads)
             api_parts = ordered_browser_parts(files, uploaded_parts)
-            if api_parts is not None and browser_api_ready(files, uploaded_parts, completed_uploads):
+            if api_parts is not None and browser_api_ready(files, uploaded_parts, completed_uploads, page):
                 logger.info("浏览器上传完成，切换 API 提交 parts=%d", len(api_parts))
                 try:
                     submitted = True
@@ -578,8 +594,16 @@ class BiliBrowser(UploadBase):
             if (
                 uploaded_parts is not None
                 and completed_uploads is not None
-                and browser_api_ready(files, uploaded_parts, completed_uploads)
+                and browser_api_ready(files, uploaded_parts, completed_uploads, page)
             ):
+                if not all(
+                    remote_upload_key(str(part["filename"])) in completed_uploads
+                    for part in ordered_browser_parts(files, uploaded_parts) or []
+                ):
+                    logger.info(
+                        "浏览器页面已确认全部分P完成，继续 API 投稿 completion_source=page_status files=%d",
+                        len(files),
+                    )
                 return None
             if not last_progress and not pending_snapshot_saved and time.monotonic() >= pending_snapshot_at:
                 self._capture_page(page, "pending")

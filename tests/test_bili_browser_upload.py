@@ -48,6 +48,17 @@ class FakeLocator:
         self.filled = value
 
 
+class MultiLocator:
+    def __init__(self, visible: list[bool]) -> None:
+        self.items = [FakeLocator(visible=value) for value in visible]
+
+    def count(self) -> int:
+        return len(self.items)
+
+    def nth(self, index: int) -> FakeLocator:
+        return self.items[index]
+
+
 class FakeCopyrightPage:
     def __init__(
         self,
@@ -282,6 +293,16 @@ def test_browser_parts_require_every_selected_file(tmp_path: Path) -> None:
     assert bili_browser.ordered_browser_parts(files, captured) is None
 
 
+def test_browser_page_uploads_ready_counts_top_part_statuses_only() -> None:
+    class Page:
+        def locator(self, selector: str) -> MultiLocator:
+            assert selector == ".task-status.task-status-success"
+            return MultiLocator([True, True, True, True])
+
+    assert bili_browser.browser_page_uploads_ready(Page(), 3)
+    assert not bili_browser.browser_page_uploads_ready(Page(), 5)
+
+
 def test_api_upload_ready_requires_every_remote_file_to_be_finalized(tmp_path: Path) -> None:
     files = [tmp_path / "first.flv", tmp_path / "second.flv"]
     complete = {
@@ -297,6 +318,13 @@ def test_api_upload_ready_requires_every_remote_file_to_be_finalized(tmp_path: P
         {"first.flv": complete["first.flv"]},
         {"first", "second"},
     )
+
+    class Page:
+        def locator(self, selector: str) -> MultiLocator:
+            assert selector == ".task-status.task-status-success"
+            return MultiLocator([True, True])
+
+    assert bili_browser.browser_api_ready(files, complete, {"first"}, Page())
 
 
 def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: Path, monkeypatch) -> None:
