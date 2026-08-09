@@ -1,0 +1,1673 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+    <title>Biliup</title>
+    <subtitle>biliup Python Edition 直播录制与 B 站自动投稿文档。</subtitle>
+    <link rel="self" type="application/atom+xml" href="https://qaq000000.github.io/biliuppy/atom.xml"/>
+    <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy"/>
+    <generator uri="https://www.getzola.org/">Zola</generator>
+    <updated>2026-08-09T08:00:00+00:00</updated>
+    <id>https://qaq000000.github.io/biliuppy/atom.xml</id>
+    <entry xml:lang="en">
+        <title>项目说明</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-02T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">&lt;h2 id=&quot;zu-cheng&quot;&gt;组成&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;FastAPI 提供 Web API、登录会话和静态 WebUI。&lt;&#x2F;li&gt;
+&lt;li&gt;SQLAlchemy 与 Alembic 管理 SQLite 数据和升级。&lt;&#x2F;li&gt;
+&lt;li&gt;Python 平台插件完成开播检测与直播流解析。&lt;&#x2F;li&gt;
+&lt;li&gt;FFmpeg 负责低开销录制和视频分段。&lt;&#x2F;li&gt;
+&lt;li&gt;Python 投稿器完成扫码登录、上传和投稿提交。&lt;&#x2F;li&gt;
+&lt;li&gt;Next.js WebUI 管理主播、模板、录像、任务、历史和日志。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;服务不需要 Rust 运行时。发布 wheel 已包含构建好的 WebUI；只有从源码重新构建前端时才需要 Node.js。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;gong-zuo-liu-cheng&quot;&gt;工作流程&lt;&#x2F;h2&gt;
+&lt;pre data-lang=&quot;text&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-text &quot;&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&lt;span&gt;检测开播 -&amp;gt; 获取直播流 -&amp;gt; FFmpeg 录制&#x2F;分段 -&amp;gt; 历史入库
+&lt;&#x2F;span&gt;&lt;span&gt;                                              -&amp;gt; B 站上传 -&amp;gt; 投稿提交 -&amp;gt; 后处理
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;投稿失败时会记录错误并保留录像文件，不执行默认删除操作。修改投稿模板中的线路或并发数后重新发起手动上传，新任务会读取更新后的配置。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;cong-na-li-kai-shi&quot;&gt;从哪里开始&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;..&#x2F;quick-start&#x2F;&quot;&gt;快速开始&lt;&#x2F;a&gt;：第一次启动并完成录制投稿配置。&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;..&#x2F;..&#x2F;guide&#x2F;introduction&#x2F;&quot;&gt;部署与升级&lt;&#x2F;a&gt;：Docker、源码运行、数据目录和数据库迁移。&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;..&#x2F;..&#x2F;guide&#x2F;configuration&#x2F;&quot;&gt;配置说明&lt;&#x2F;a&gt;：全局设置、主播覆写和上传线路。&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;..&#x2F;..&#x2F;guide&#x2F;operations&#x2F;&quot;&gt;日常运维&lt;&#x2F;a&gt;：日志、历史、备份和故障排查。&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;..&#x2F;..&#x2F;help&#x2F;faq&#x2F;&quot;&gt;常见问题&lt;&#x2F;a&gt;：登录、录制与投稿问题。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>快速开始</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-02T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/">&lt;h2 id=&quot;huan-jing-yao-qiu&quot;&gt;环境要求&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Python 3.10 以上，推荐 3.12&lt;&#x2F;li&gt;
+&lt;li&gt;uv&lt;&#x2F;li&gt;
+&lt;li&gt;FFmpeg&lt;&#x2F;li&gt;
+&lt;li&gt;Node.js 20，仅构建 WebUI 时需要&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;确认 FFmpeg 可用：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;ffmpeg -version
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;windows-yuan-ma-qi-dong&quot;&gt;Windows 源码启动&lt;&#x2F;h2&gt;
+&lt;pre data-lang=&quot;powershell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-powershell &quot;&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;Set-ExecutionPolicy &lt;&#x2F;span&gt;&lt;span&gt;-Scope &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;Process&lt;&#x2F;span&gt;&lt;span&gt; Bypass
+&lt;&#x2F;span&gt;&lt;span&gt;.\scripts\dev.ps1
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;已经构建过 WebUI 时可以跳过前端构建：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;powershell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-powershell &quot;&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span&gt;.\scripts\dev.ps1 -SkipFrontend
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;只在可信任的本机调试环境中关闭认证：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;powershell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-powershell &quot;&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span&gt;.\scripts\dev.ps1 -SkipFrontend -NoAuth
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;linux-huo-macos-yuan-ma-qi-dong&quot;&gt;Linux 或 macOS 源码启动&lt;&#x2F;h2&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;sh scripts&#x2F;dev.sh
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;也可以逐步运行：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv sync --extra dev
+&lt;&#x2F;span&gt;&lt;span&gt;npm ci
+&lt;&#x2F;span&gt;&lt;span&gt;npm run build
+&lt;&#x2F;span&gt;&lt;span&gt;uv run biliup server
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;默认地址为 &lt;a href=&quot;http:&#x2F;&#x2F;localhost:19159&quot;&gt;http:&#x2F;&#x2F;localhost:19159&lt;&#x2F;a&gt;。自定义端口和数据根目录：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv run biliup server --host 127.0.0.1 --port 19160 --home .&#x2F;runtime
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;docker&quot;&gt;Docker&lt;&#x2F;h2&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;docker compose up -d --build
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose ps
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;打开 &lt;a href=&quot;http:&#x2F;&#x2F;localhost:19159&quot;&gt;http:&#x2F;&#x2F;localhost:19159&lt;&#x2F;a&gt;。主机的 &lt;code&gt;.&#x2F;data&lt;&#x2F;code&gt; 保存数据库、账号、录像、日志和缓存。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;di-yi-ci-pei-zhi&quot;&gt;第一次配置&lt;&#x2F;h2&gt;
+&lt;ol&gt;
+&lt;li&gt;首次启用认证时，在登录页注册管理账号。&lt;&#x2F;li&gt;
+&lt;li&gt;打开“投稿管理”，进入用户管理并扫码登录 B 站。&lt;&#x2F;li&gt;
+&lt;li&gt;新建投稿模板，设置分区、标题、标签和账号。&lt;&#x2F;li&gt;
+&lt;li&gt;打开“录播管理”，新增主播并关联投稿模板。&lt;&#x2F;li&gt;
+&lt;li&gt;在“任务平台”确认主播状态正常。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;没有关联投稿模板时只录制，不会自动投稿。可以在投稿管理中选择已有录像进行手动上传。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;pei-zhi-wen-jian&quot;&gt;配置文件&lt;&#x2F;h2&gt;
+&lt;p&gt;YAML 和 TOML 均受支持：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv run biliup validate-config .&#x2F;public&#x2F;config.yaml
+&lt;&#x2F;span&gt;&lt;span&gt;uv run biliup server --config .&#x2F;public&#x2F;config.yaml
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;配置文件中的主播只在数据库没有录制任务时首次导入，不会覆盖 WebUI 中已有任务。&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>配置说明</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-09T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/guide/configuration/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">&lt;h2 id=&quot;pei-zhi-lai-yuan&quot;&gt;配置来源&lt;&#x2F;h2&gt;
+&lt;p&gt;WebUI 保存的全局设置和任务位于 SQLite。YAML&#x2F;TOML 主要用于首次导入和部署默认值：数据库已有主播任务时，不会被配置文件覆盖。&lt;&#x2F;p&gt;
+&lt;p&gt;验证配置文件：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv run biliup validate-config .&#x2F;public&#x2F;config.yaml
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;示例文件：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;public&#x2F;config.yaml&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;public&#x2F;config.toml&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;平台专用的扩展字段会被保留。全局设置修改后对新启动的检测、录制和投稿任务生效；已经运行中的任务不会中途切换参数。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;lu-zhi-she-zhi&quot;&gt;录制设置&lt;&#x2F;h2&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;字段&lt;&#x2F;th&gt;&lt;th&gt;说明&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;downloader&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;当前统一使用 FFmpeg 录制&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;segment_time&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;单个分片最长时长，格式 &lt;code&gt;HH:MM:SS&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;file_size&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;单个分片大小上限，单位 Byte&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;filtering_threshold&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;小于此值的分片视为无效并删除，单位 MiB&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;filename_prefix&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;文件名模板，支持 &lt;code&gt;{streamer}&lt;&#x2F;code&gt;、&lt;code&gt;{title}&lt;&#x2F;code&gt; 和时间格式&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;delay&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;下播确认窗口，默认 60 秒；窗口内恢复直播会刷新流地址并归入同一场录像&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;upload_delay&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;确认下播后、开始投稿前的额外等待时间，单位秒&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;checker_concurrency&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;最大同时直播状态检测请求数&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;recorder_stall_timeout&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;FFmpeg 存活但录像文件持续不增长时，等待多少秒后触发恢复；&lt;code&gt;0&lt;&#x2F;code&gt; 表示关闭&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;recorder_retry_limit&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;短时间连续录制失败达到多少次后进入熔断冷却&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;recorder_retry_backoff&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;连续录制失败的指数退避起始秒数，单次最大 60 秒&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;pool1_size&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;最大同时录制任务数&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;同时设置 &lt;code&gt;segment_time&lt;&#x2F;code&gt; 和 &lt;code&gt;file_size&lt;&#x2F;code&gt; 时，先达到限制的一项结束当前分片。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;tou-gao-she-zhi&quot;&gt;投稿设置&lt;&#x2F;h2&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;字段&lt;&#x2F;th&gt;&lt;th&gt;说明&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;uploader&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;上传器；&lt;code&gt;bili_web&lt;&#x2F;code&gt; 使用 Python UPOS API，&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 使用 Playwright 创作中心协议&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;submit_api&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;最终投稿接口，例如 &lt;code&gt;web&lt;&#x2F;code&gt;、&lt;code&gt;app&lt;&#x2F;code&gt;、&lt;code&gt;b-cut-android&lt;&#x2F;code&gt;；&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 的混合链路固定使用 &lt;code&gt;web&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;lines&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;bili_web&lt;&#x2F;code&gt; 的 UPOS 上传线路，&lt;code&gt;AUTO&lt;&#x2F;code&gt; 自动选择&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;threads&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;bili_web&lt;&#x2F;code&gt; 单个文件的并发分片上传数，范围 1～8&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;pool2_size&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;最大同时投稿任务数&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;manual_upload_queue_limit&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;手动投稿中运行和排队的任务总数上限，默认 8&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;submit_interval&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;同一账号两次最终投稿的最短间隔，默认 60 秒，不影响分P上传&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;常用线路包括 &lt;code&gt;bda2&lt;&#x2F;code&gt;、&lt;code&gt;bldsa&lt;&#x2F;code&gt;、&lt;code&gt;qn&lt;&#x2F;code&gt;、&lt;code&gt;tx&lt;&#x2F;code&gt; 和 &lt;code&gt;txa&lt;&#x2F;code&gt;。线路效果与运营商和所在地区有关，应以实际上传日志为准。并发数不是越大越好，通常从 &lt;code&gt;3&lt;&#x2F;code&gt; 开始测试，部分线路会限制并发数。这些设置只作用于 &lt;code&gt;bili_web&lt;&#x2F;code&gt;；&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 的线路和并发由创作中心协议决定。&lt;&#x2F;p&gt;
+&lt;p&gt;手动重新上传会读取提交时的最新模板和全局设置。修改线路不会改变已经运行中的上传任务。&lt;&#x2F;p&gt;
+&lt;p&gt;同一账号、文件和投稿参数的手动任务仍在活动时，重复请求会返回原任务，不会再次投稿。达到 &lt;code&gt;manual_upload_queue_limit&lt;&#x2F;code&gt; 后接口返回 &lt;code&gt;429&lt;&#x2F;code&gt;；任务结束后可以重新提交。&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;code&gt;bili_web&lt;&#x2F;code&gt; 已上传的分 P 会在 SQLite 中缓存 3 天。最终投稿失败时，使用同一账号重新上传相同文件可复用缓存；投稿成功后缓存立即清除。&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 当前会重新上传所选文件，不复用该分 P 缓存。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ri-zhi-yu-li-shi&quot;&gt;日志与历史&lt;&#x2F;h2&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;字段&lt;&#x2F;th&gt;&lt;th&gt;说明&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;log_file_max_size_mb&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;单个 &lt;code&gt;biliup.log&lt;&#x2F;code&gt; 大小上限，轮转后保留 5 个备份&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;history_max_records&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;直播历史数据库记录数量上限&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;历史超出上限时删除最旧数据库记录，不删除磁盘录像。WebUI 中的手动清理同样不会删除录像。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;zhu-bo-fu-xie&quot;&gt;主播覆写&lt;&#x2F;h2&gt;
+&lt;p&gt;每个主播可以在“配置覆写”中覆盖部分全局设置，例如分段、过滤阈值、B 站画质、CDN 和弹幕录制。优先级为：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;text&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-text &quot;&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&lt;span&gt;主播覆写 &amp;gt; WebUI 全局设置&#x2F;数据库配置 &amp;gt; 程序默认值
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;覆写只影响该主播，不改变其他录制任务。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;lu-jing-he-fu-wu-huan-jing-bian-liang&quot;&gt;路径和服务环境变量&lt;&#x2F;h2&gt;
+&lt;p&gt;常用变量：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;text&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-text &quot;&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&lt;span&gt;BILIUP_HOME
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_DATABASE
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_DATA_DIR
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_CONFIG_DIR
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_DOWNLOAD_DIR
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_LOG_DIR
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_FRONTEND_DIR
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_HOST
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_PORT
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_CORS_ORIGIN
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_AUTH_ENABLED
+&lt;&#x2F;span&gt;&lt;span&gt;BILIUP_LOG_LEVEL
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;所有相对目录都从 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 解析。完整示例见项目根目录 &lt;code&gt;.env.example&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>部署与升级</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-02T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/guide/introduction/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">&lt;h2 id=&quot;bu-shu-fang-shi&quot;&gt;部署方式&lt;&#x2F;h2&gt;
+&lt;p&gt;长期运行推荐 Docker Compose；开发和本机调试推荐源码启动。两种方式使用相同的 FastAPI 服务和 SQLite 数据结构。&lt;&#x2F;p&gt;
+&lt;p&gt;Docker：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;docker compose up -d --build
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;源码：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv sync --extra dev
+&lt;&#x2F;span&gt;&lt;span&gt;npm ci
+&lt;&#x2F;span&gt;&lt;span&gt;npm run build
+&lt;&#x2F;span&gt;&lt;span&gt;uv run biliup server --host 0.0.0.0 --port 19159
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;生产环境不要使用 &lt;code&gt;--reload&lt;&#x2F;code&gt; 或 &lt;code&gt;--no-auth&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;shu-ju-mu-lu&quot;&gt;数据目录&lt;&#x2F;h2&gt;
+&lt;p&gt;所有可变数据都从 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 派生：&lt;&#x2F;p&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;内容&lt;&#x2F;th&gt;&lt;th&gt;默认路径&lt;&#x2F;th&gt;&lt;th&gt;环境变量&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;SQLite 与账号文件&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;data&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_DATA_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;SQLite 数据库&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;data&#x2F;data.sqlite3&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_DATABASE&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;配置目录&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;config&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_CONFIG_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;录像目录&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;downloads&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_DOWNLOAD_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;日志目录&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;logs&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_LOG_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;缓存目录&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;$BILIUP_HOME&#x2F;cache&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_CACHE_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;WebUI 静态文件&lt;&#x2F;td&gt;&lt;td&gt;源码为 &lt;code&gt;out&lt;&#x2F;code&gt;，wheel 为内置目录&lt;&#x2F;td&gt;&lt;td&gt;&lt;code&gt;BILIUP_FRONTEND_DIR&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;源码目录启动时，&lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 默认是仓库根目录，因此会直接使用现有的 &lt;code&gt;data&#x2F;data.sqlite3&lt;&#x2F;code&gt;。Docker Compose 将主机的 &lt;code&gt;.&#x2F;data&lt;&#x2F;code&gt; 挂载到容器 &lt;code&gt;&#x2F;data&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;shu-ju-ku-sheng-ji&quot;&gt;数据库升级&lt;&#x2F;h2&gt;
+&lt;p&gt;服务每次启动都会执行 Alembic 迁移。已有表和数据会原地升级，不需要导出后重新导入，也不应删除数据库重新开始。&lt;&#x2F;p&gt;
+&lt;p&gt;升级前：&lt;&#x2F;p&gt;
+&lt;ol&gt;
+&lt;li&gt;停止服务，确保 SQLite 没有写入。&lt;&#x2F;li&gt;
+&lt;li&gt;备份整个 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt;，至少备份数据库和账号 JSON。&lt;&#x2F;li&gt;
+&lt;li&gt;更新代码或镜像。&lt;&#x2F;li&gt;
+&lt;li&gt;启动服务并检查健康状态、任务状态和日志。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;Docker 更新：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;docker compose down
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose build --pull
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose up -d
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose ps
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;源码更新：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv sync --extra dev
+&lt;&#x2F;span&gt;&lt;span&gt;npm ci
+&lt;&#x2F;span&gt;&lt;span&gt;npm run build
+&lt;&#x2F;span&gt;&lt;span&gt;uv run pytest -q
+&lt;&#x2F;span&gt;&lt;span&gt;uv run biliup server
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;pei-zhi-dao-ru-jian-rong&quot;&gt;配置导入兼容&lt;&#x2F;h2&gt;
+&lt;p&gt;YAML&#x2F;TOML 中的主播只在 SQLite 没有主播任务时首次导入。数据库中已有任务时，启动不会用配置文件覆盖它们。旧上传器名称 &lt;code&gt;biliup-rs&lt;&#x2F;code&gt; 和 &lt;code&gt;stream_gears&lt;&#x2F;code&gt; 会迁移为 Python &lt;code&gt;bili_web&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;jian-kang-jian-cha&quot;&gt;健康检查&lt;&#x2F;h2&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;curl http:&#x2F;&#x2F;127.0.0.1:19159&#x2F;healthz
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;正常返回：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;json&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-json &quot;&gt;&lt;code class=&quot;language-json&quot; data-lang=&quot;json&quot;&gt;&lt;span&gt;{&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;status&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;:&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;ok&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;OpenAPI 文档位于 &lt;code&gt;&#x2F;docs&lt;&#x2F;code&gt;。服务异常时先查看 &lt;code&gt;logs&#x2F;biliup.log&lt;&#x2F;code&gt; 或 &lt;code&gt;docker compose logs biliup&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>日常运维</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-09T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/guide/operations/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/guide/operations/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/guide/operations/">&lt;h2 id=&quot;fu-wu-shi-li&quot;&gt;服务实例&lt;&#x2F;h2&gt;
+&lt;p&gt;同一 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 只能运行一个 &lt;code&gt;biliup server&lt;&#x2F;code&gt; 进程。不要配置多个 Uvicorn&#x2F;Gunicorn worker，也不要让多套 systemd 服务共用同一 HOME，否则会重复检测、录制和投稿。&lt;&#x2F;p&gt;
+&lt;p&gt;服务会使用 &lt;code&gt;$BILIUP_HOME&#x2F;.biliup.lock&lt;&#x2F;code&gt; 阻止第二个实例启动。锁文件会长期存在，是否被占用由操作系统文件锁决定，不要通过删除锁文件强制启动第二个实例。&lt;&#x2F;p&gt;
+&lt;p&gt;Linux 生产环境可以使用单个 systemd 服务。以下路径、用户和端口应按实际部署修改：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;ini&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-ini &quot;&gt;&lt;code class=&quot;language-ini&quot; data-lang=&quot;ini&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;[Unit]
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Description&lt;&#x2F;span&gt;&lt;span&gt;=biliuppy recording service
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;After&lt;&#x2F;span&gt;&lt;span&gt;=network-online.target
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Wants&lt;&#x2F;span&gt;&lt;span&gt;=network-online.target
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;[Service]
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Type&lt;&#x2F;span&gt;&lt;span&gt;=simple
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;User&lt;&#x2F;span&gt;&lt;span&gt;=biliup
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Group&lt;&#x2F;span&gt;&lt;span&gt;=biliup
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;WorkingDirectory&lt;&#x2F;span&gt;&lt;span&gt;=&#x2F;opt&#x2F;biliuppy
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Environment&lt;&#x2F;span&gt;&lt;span&gt;=BILIUP_HOME=&#x2F;var&#x2F;lib&#x2F;biliuppy
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;ExecStart&lt;&#x2F;span&gt;&lt;span&gt;=&#x2F;usr&#x2F;bin&#x2F;xvfb-run -a -s &lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;&amp;quot;-screen 0 1920x1080x24&amp;quot; &lt;&#x2F;span&gt;&lt;span&gt;&#x2F;opt&#x2F;biliuppy&#x2F;.venv&#x2F;bin&#x2F;biliup server --host &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0.0.0.0 &lt;&#x2F;span&gt;&lt;span&gt;--port &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;19159 &lt;&#x2F;span&gt;&lt;span&gt;--no-access-log
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Restart&lt;&#x2F;span&gt;&lt;span&gt;=on-failure
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;RestartSec&lt;&#x2F;span&gt;&lt;span&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;5
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;TimeoutStopSec&lt;&#x2F;span&gt;&lt;span&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;60
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;KillMode&lt;&#x2F;span&gt;&lt;span&gt;=control-group
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;StandardOutput&lt;&#x2F;span&gt;&lt;span&gt;=journal
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;StandardError&lt;&#x2F;span&gt;&lt;span&gt;=journal
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;SyslogIdentifier&lt;&#x2F;span&gt;&lt;span&gt;=biliuppy
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;[Install]
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;WantedBy&lt;&#x2F;span&gt;&lt;span&gt;=multi-user.target
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;保存为 &lt;code&gt;&#x2F;etc&#x2F;systemd&#x2F;system&#x2F;biliuppy.service&lt;&#x2F;code&gt; 后运行：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;sudo systemctl daemon-reload
+&lt;&#x2F;span&gt;&lt;span&gt;sudo systemctl enable --now biliuppy
+&lt;&#x2F;span&gt;&lt;span&gt;sudo systemctl status biliuppy
+&lt;&#x2F;span&gt;&lt;span&gt;journalctl -u biliuppy -f
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;浏览器高速上传器 &lt;code&gt;bili_browser&lt;&#x2F;code&gt; 使用 Playwright 的可见浏览器模式，以便使用创作中心的新版分片上传协议。Linux 服务器不需要安装桌面环境，但需要安装虚拟显示和浏览器（使用运行服务的同一个用户）：&lt;&#x2F;p&gt;
+&lt;p&gt;Windows 首次安装 Chromium：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;powershell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-powershell &quot;&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span&gt;uv run playwright install chromium
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Linux 安装 Chromium 和虚拟显示：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;sudo apt install -y xauth xvfb
+&lt;&#x2F;span&gt;&lt;span&gt;uv sync
+&lt;&#x2F;span&gt;&lt;span&gt;uv run playwright install --with-deps chromium
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;直接从终端启动时，原来的 &lt;code&gt;uv run biliup server ...&lt;&#x2F;code&gt; 也必须包在 &lt;code&gt;xvfb-run&lt;&#x2F;code&gt; 中：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;xvfb-run -a -s &amp;quot;-screen 0 1920x1080x24&amp;quot; \
+&lt;&#x2F;span&gt;&lt;span&gt;  uv run biliup server --host 0.0.0.0 --port 19159
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;使用宝塔面板、Supervisor 或其他进程守护工具时，同样应把完整的 &lt;code&gt;xvfb-run&lt;&#x2F;code&gt; 命令填入启动命令，不能只在安装时运行一次 Xvfb。systemd 应使用本页示例中以 &lt;code&gt;&#x2F;usr&#x2F;bin&#x2F;xvfb-run&lt;&#x2F;code&gt; 开头的 &lt;code&gt;ExecStart&lt;&#x2F;code&gt;，修改后执行 &lt;code&gt;systemctl daemon-reload&lt;&#x2F;code&gt; 并重启服务。&lt;&#x2F;p&gt;
+&lt;p&gt;如果日志出现 &lt;code&gt;RuntimeError: Browser upload requires a display&lt;&#x2F;code&gt;，说明当前 biliuppy 进程既没有 &lt;code&gt;DISPLAY&lt;&#x2F;code&gt;，也没有 &lt;code&gt;WAYLAND_DISPLAY&lt;&#x2F;code&gt;。不要只执行 &lt;code&gt;export DISPLAY=:99&lt;&#x2F;code&gt;；除非该显示编号上确实有正在运行的 X Server，否则 Chromium 仍无法启动。应停止原进程并通过上面的 &lt;code&gt;xvfb-run&lt;&#x2F;code&gt; 命令重新启动。&lt;&#x2F;p&gt;
+&lt;p&gt;必须用实际运行 biliuppy 服务的系统账号执行 Playwright 安装，否则 systemd 或进程守护工具启动后可能找不到 Chromium。没有选择 &lt;code&gt;bili_browser&lt;&#x2F;code&gt; 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB &lt;code&gt;&#x2F;dev&#x2F;shm&lt;&#x2F;code&gt;。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN &lt;code&gt;400 InvalidArgument&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;p&gt;浏览器模式的完整链路是：Playwright 上传全部分 P，程序捕获每个分 P 的 &lt;code&gt;filename&lt;&#x2F;code&gt; 和 &lt;code&gt;biz_id&#x2F;cid&lt;&#x2F;code&gt;，按选择顺序构造 &lt;code&gt;videos[]&lt;&#x2F;code&gt;，再使用当前浏览器 Cookie 调用 Python Web 投稿 API 填写并提交稿件。只有 API 返回明确拒绝时才回退到页面提交。API 超时、连接中断或没有返回 &lt;code&gt;aid&#x2F;bvid&lt;&#x2F;code&gt; 时属于“结果未知”，系统不会自动再次投稿；应先在创作中心确认是否已经生成稿件。&lt;&#x2F;p&gt;
+&lt;p&gt;创作中心偶尔出现的“批量操作”可选浮层会被自动取消。不要通过 F12 删除浮层 DOM，这会改变页面状态并使自动化选择器失效。&lt;&#x2F;p&gt;
+&lt;p&gt;systemd 默认按宿主机 journald 策略保存 stdout&#x2F;stderr。可在 &lt;code&gt;&#x2F;etc&#x2F;systemd&#x2F;journald.conf&lt;&#x2F;code&gt; 中设置 &lt;code&gt;SystemMaxUse&lt;&#x2F;code&gt;、&lt;code&gt;RuntimeMaxUse&lt;&#x2F;code&gt; 或 &lt;code&gt;MaxRetentionSec&lt;&#x2F;code&gt;，修改后重启 &lt;code&gt;systemd-journald&lt;&#x2F;code&gt;。这些限制作用于整个 journal，不是单个 biliuppy 服务。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ren-wu-zhuang-tai&quot;&gt;任务状态&lt;&#x2F;h2&gt;
+&lt;p&gt;常见录制状态：&lt;&#x2F;p&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;状态&lt;&#x2F;th&gt;&lt;th&gt;含义&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Pending&lt;&#x2F;code&gt; &#x2F; &lt;code&gt;Checking&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;等待或正在检查直播状态&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Idle&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;当前未开播&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Waiting&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;已触发录制，等待资源&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Downloading&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;FFmpeg 正在录制&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Recovering&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;录制流中断，正在刷新直播状态和流地址&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;ConfirmingOffline&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;已收到明确下播结果，仍处于下播确认宽限期&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Degraded&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;平台检测暂不可用，或连续录制失败后正在熔断冷却&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Paused&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;用户暂停&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;code&gt;Error&lt;&#x2F;code&gt;&lt;&#x2F;td&gt;&lt;td&gt;检测、录制或处理发生错误&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;投稿状态单独显示。上传失败时录像保留在下载目录，可在投稿管理中手动重新上传。&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;code&gt;delay&lt;&#x2F;code&gt; 是录制中断后的下播确认宽限期，默认 60 秒。确认期间会进行至少 3 次明确下播检测；恢复开播会刷新流地址并继续同一场录制，超时、限流、接口异常等 &lt;code&gt;UNKNOWN&lt;&#x2F;code&gt; 结果不会计为下播。&lt;code&gt;upload_delay&lt;&#x2F;code&gt; 才是确认下播后、开始自动投稿前的等待时间。&lt;&#x2F;p&gt;
+&lt;p&gt;FFmpeg 存活但录像文件在 &lt;code&gt;recorder_stall_timeout&lt;&#x2F;code&gt; 秒内没有增长时，也会进入恢复流程。连续失败使用指数退避；达到 &lt;code&gt;recorder_retry_limit&lt;&#x2F;code&gt; 后进入至少 5 分钟的熔断冷却。熔断期间不会把仍在直播的场次送去投稿。&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;code&gt;min_free_disk_gb&lt;&#x2F;code&gt; 控制下载目录所在磁盘必须保留的空间，默认 5 GB。空间不足时不会启动新录制；录制过程中低于阈值时会停止 FFmpeg、保留已有录像并显示 &lt;code&gt;Degraded&lt;&#x2F;code&gt;。设为 &lt;code&gt;0&lt;&#x2F;code&gt; 可关闭保护。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;shou-dong-shang-chuan-he-xian-lu-qie-huan&quot;&gt;手动上传和线路切换&lt;&#x2F;h2&gt;
+&lt;ol&gt;
+&lt;li&gt;在全局设置或投稿模板中修改 &lt;code&gt;lines&lt;&#x2F;code&gt;、&lt;code&gt;threads&lt;&#x2F;code&gt;。&lt;&#x2F;li&gt;
+&lt;li&gt;保存配置。&lt;&#x2F;li&gt;
+&lt;li&gt;在投稿管理中重新选择录像并上传。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;新任务使用保存后的配置，正在上传的任务继续使用启动时的配置。&lt;code&gt;lines&lt;&#x2F;code&gt; 和 &lt;code&gt;threads&lt;&#x2F;code&gt; 只控制 &lt;code&gt;bili_web&lt;&#x2F;code&gt; 的 UPOS 上传；&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 使用创作中心浏览器协议，这两个参数不会改变其线路或速度。上传日志会记录协议、线路、分片数量、进度、平均速度和投稿结果。&lt;&#x2F;p&gt;
+&lt;p&gt;选择文件和投稿模板后，WebUI 会在真正创建任务前显示投稿预览，包括展开变量后的标题、简介、直播间信息、元数据来源及分 P 列表。元数据优先从直播历史读取；未关联历史的录像会尝试从主播和录像文件名恢复；仍无法识别时使用文件名、修改时间等文件属性。多 P 按用户选择顺序上传和提交，不按文件名或完成时间重新排序。&lt;&#x2F;p&gt;
+&lt;p&gt;手动投稿最多选择 100 个文件，&lt;code&gt;threads&lt;&#x2F;code&gt; 范围为 1～8。活动任务总数由 &lt;code&gt;manual_upload_queue_limit&lt;&#x2F;code&gt; 控制；相同账号、文件和参数的活动任务会复用原任务 ID，避免重复点击造成重复投稿。&lt;&#x2F;p&gt;
+&lt;p&gt;最近 100 条手动上传任务状态保存在 SQLite 中，服务重启后仍可查询。重启时尚未完成的任务会标记为 &lt;code&gt;Cancelled&lt;&#x2F;code&gt;，系统不会自动重复投稿。任务显示“结果未知”或在最终提交阶段异常时，也应先在创作中心确认稿件状态，再决定是否重新上传。&lt;&#x2F;p&gt;
+&lt;p&gt;自动投稿成功后，默认删除操作会等待 B 站审核状态确认。审核通过后删除录像和同名 XML；审核失败、查询异常或 24 小时内无法确认时保留源文件。待审核任务保存在 SQLite 中，服务重启后会继续检查。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ri-zhi-guan-li&quot;&gt;日志管理&lt;&#x2F;h2&gt;
+&lt;p&gt;WebUI 的实时日志分为程序、录制和上传类别。日志文件位于 &lt;code&gt;BILIUP_LOG_DIR&lt;&#x2F;code&gt;，默认为 &lt;code&gt;$BILIUP_HOME&#x2F;logs&#x2F;biliup.log&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;log_file_max_size_mb&lt;&#x2F;code&gt; 控制单个日志文件上限。&lt;&#x2F;li&gt;
+&lt;li&gt;达到上限后轮转，保留最近 5 个备份。&lt;&#x2F;li&gt;
+&lt;li&gt;“清理日志”会清空当前日志并删除轮转备份。&lt;&#x2F;li&gt;
+&lt;li&gt;Cookie、访问令牌和上传签名会自动脱敏。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;清理日志不可恢复。需要排查故障时应先下载或备份日志。&lt;&#x2F;p&gt;
+&lt;p&gt;生产环境有三条相互独立的日志链路：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;应用日志写入 &lt;code&gt;biliup.log&lt;&#x2F;code&gt;，由 &lt;code&gt;log_file_max_size_mb&lt;&#x2F;code&gt; 和 5 个备份控制。&lt;&#x2F;li&gt;
+&lt;li&gt;Uvicorn access log 默认关闭；使用 &lt;code&gt;--access-log&lt;&#x2F;code&gt; 启用后写入 stdout，不进入 &lt;code&gt;biliup.log&lt;&#x2F;code&gt;。&lt;&#x2F;li&gt;
+&lt;li&gt;进程 stdout&#x2F;stderr 由运行环境管理：Docker Compose 使用 &lt;code&gt;local&lt;&#x2F;code&gt; 驱动并保留最多 3 个 10 MB 文件，systemd 使用 journald。应用内的日志大小设置不会限制这部分日志。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;zhi-bo-li-shi&quot;&gt;直播历史&lt;&#x2F;h2&gt;
+&lt;p&gt;直播历史从 SQLite 分页读取，不扫描全部录像目录。&lt;code&gt;history_max_records&lt;&#x2F;code&gt; 控制保留数量，超限时移除最旧记录。&lt;&#x2F;p&gt;
+&lt;p&gt;“清理历史”只删除以下数据库记录：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;直播场次&lt;&#x2F;li&gt;
+&lt;li&gt;历史记录关联的文件条目&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;磁盘上的录像文件不会被删除。录像文件删除由投稿后的后处理或人工操作控制。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;bei-fen&quot;&gt;备份&lt;&#x2F;h2&gt;
+&lt;p&gt;完整备份应包括：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;text&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-text &quot;&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&lt;span&gt;data.sqlite3
+&lt;&#x2F;span&gt;&lt;span&gt;账号 JSON 文件
+&lt;&#x2F;span&gt;&lt;span&gt;downloads&#x2F;
+&lt;&#x2F;span&gt;&lt;span&gt;config&#x2F;
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;备份 SQLite 前先停止服务，或者使用 SQLite 在线备份工具，避免直接复制正在写入的数据库文件。&lt;&#x2F;p&gt;
+&lt;p&gt;恢复时保持目录结构不变，并使用相同的 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 或路径环境变量启动。Alembic 会在启动时继续执行必要迁移。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;gu-zhang-chu-li-shun-xu&quot;&gt;故障处理顺序&lt;&#x2F;h2&gt;
+&lt;ol&gt;
+&lt;li&gt;请求 &lt;code&gt;&#x2F;healthz&lt;&#x2F;code&gt;，确认服务进程可访问。&lt;&#x2F;li&gt;
+&lt;li&gt;查看任务平台中的录制与投稿状态。&lt;&#x2F;li&gt;
+&lt;li&gt;在实时日志中选择对应类别。&lt;&#x2F;li&gt;
+&lt;li&gt;检查 FFmpeg 是否在 &lt;code&gt;PATH&lt;&#x2F;code&gt; 中、磁盘空间是否充足。&lt;&#x2F;li&gt;
+&lt;li&gt;上传问题先检查账号有效性、线路和并发数。&lt;&#x2F;li&gt;
+&lt;li&gt;保留数据库和录像，再重启服务验证；不要先删除数据。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;开发环境可以运行：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv run pytest -q
+&lt;&#x2F;span&gt;&lt;span&gt;npm run lint
+&lt;&#x2F;span&gt;&lt;span&gt;npm run build
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>常见问题</title>
+        <published>2026-08-02T08:00:00+00:00</published>
+        <updated>2026-08-09T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/help/faq/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/help/faq/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/help/faq/">&lt;h2 id=&quot;ru-he-deng-lu-b-zhan&quot;&gt;如何登录 B 站？&lt;&#x2F;h2&gt;
+&lt;p&gt;在 WebUI 的“投稿管理”中打开用户管理，选择扫码登录。账号信息保存为 &lt;code&gt;BILIUP_DATA_DIR&lt;&#x2F;code&gt; 下的 JSON 文件，可直接用于投稿模板。&lt;&#x2F;p&gt;
+&lt;p&gt;不建议使用账号密码登录，容易触发验证码和风控。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-que-ren-zhang-hao-shi-fou-you-xiao&quot;&gt;如何确认账号是否有效？&lt;&#x2F;h2&gt;
+&lt;p&gt;用户管理会读取 B 站账号资料并显示头像和昵称。显示“Cookie 已失效”时，应删除该账号并重新扫码登录。不要在日志、Issue 或聊天中发送账号 JSON、Cookie、访问令牌。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;shang-chuan-shi-bai-zen-me-ban&quot;&gt;上传失败怎么办？&lt;&#x2F;h2&gt;
+&lt;p&gt;按以下顺序检查：&lt;&#x2F;p&gt;
+&lt;ol&gt;
+&lt;li&gt;在用户管理确认账号有效。&lt;&#x2F;li&gt;
+&lt;li&gt;在投稿模板确认分区、标题、标签和转载来源等必填字段。&lt;&#x2F;li&gt;
+&lt;li&gt;查看“上传日志”中的线路、HTTP 状态和投稿返回值。&lt;&#x2F;li&gt;
+&lt;li&gt;切换 &lt;code&gt;lines&lt;&#x2F;code&gt; 后重新发起手动上传。&lt;&#x2F;li&gt;
+&lt;li&gt;降低或适当提高 &lt;code&gt;threads&lt;&#x2F;code&gt;，通常从 &lt;code&gt;3&lt;&#x2F;code&gt; 开始测试。&lt;&#x2F;li&gt;
+&lt;li&gt;确认录像文件仍存在且格式受 B 站支持。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;投稿失败不会执行默认删除操作，录像会保留用于重试。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;qie-huan-shang-chuan-xian-lu-hou-zhong-xin-shang-chuan-hui-sheng-xiao-ma&quot;&gt;切换上传线路后重新上传会生效吗？&lt;&#x2F;h2&gt;
+&lt;p&gt;使用 &lt;code&gt;bili_web&lt;&#x2F;code&gt; 时会生效。手动上传任务在创建时读取最新模板和全局配置，保存新线路后重新上传会使用新线路；已经运行中的任务不会中途切换。&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 使用创作中心浏览器协议，&lt;code&gt;lines&lt;&#x2F;code&gt; 和 &lt;code&gt;threads&lt;&#x2F;code&gt; 不控制其线路或速度。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-xuan-ze-shang-chuan-xian-lu&quot;&gt;如何选择上传线路？&lt;&#x2F;h2&gt;
+&lt;p&gt;优先使用 &lt;code&gt;AUTO&lt;&#x2F;code&gt;。需要手动测试时，国内网络可比较 &lt;code&gt;bda2&lt;&#x2F;code&gt;、&lt;code&gt;bldsa&lt;&#x2F;code&gt;、&lt;code&gt;qn&lt;&#x2F;code&gt;、&lt;code&gt;tx&lt;&#x2F;code&gt;，海外网络可比较 &lt;code&gt;txa&lt;&#x2F;code&gt;、&lt;code&gt;qn&lt;&#x2F;code&gt;、&lt;code&gt;alia&lt;&#x2F;code&gt;。线路速度随地区、运营商和时段变化，应以日志中的实际平均速度为准。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;web-shang-chuan-kuai-dan-cheng-xu-shang-chuan-man-zen-me-ban&quot;&gt;Web 上传快，但程序上传慢怎么办？&lt;&#x2F;h2&gt;
+&lt;p&gt;浏览器和程序可能命中不同 UPOS 节点。使用 &lt;code&gt;bili_web&lt;&#x2F;code&gt; 时先比较线路，再调整 &lt;code&gt;threads&lt;&#x2F;code&gt;。如果创作中心上传明显更快，可以把投稿模板的 &lt;code&gt;uploader&lt;&#x2F;code&gt; 改为 &lt;code&gt;bili_browser&lt;&#x2F;code&gt;；该模式使用 Playwright 调用创作中心新版上传协议。还应检查磁盘读取速度、代理和安全软件。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;liu-lan-qi-gao-su-shang-chuan-shi-zen-me-gong-zuo-de&quot;&gt;浏览器高速上传是怎么工作的？&lt;&#x2F;h2&gt;
+&lt;p&gt;&lt;code&gt;bili_browser&lt;&#x2F;code&gt; 使用 Playwright 的可见 Chromium 上传视频，程序等待并捕获全部分 P 的上传结果，再按选择顺序使用 Python Web API 提交标题、简介、标签等稿件信息。只有 API 明确拒绝时才回退页面提交；超时或连接中断后不会盲目二次投稿。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;linux-bao-browser-upload-requires-a-display-zen-me-ban&quot;&gt;Linux 报“Browser upload requires a display”怎么办？&lt;&#x2F;h2&gt;
+&lt;p&gt;浏览器高速上传必须以可见浏览器模式运行，纯命令行服务器没有显示设备。Xvfb 提供虚拟屏幕，不需要安装 GNOME、KDE 等完整桌面环境。安装并使用虚拟显示启动：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;sudo apt install -y xauth xvfb
+&lt;&#x2F;span&gt;&lt;span&gt;uv run playwright install --with-deps chromium
+&lt;&#x2F;span&gt;&lt;span&gt;xvfb-run -a -s &amp;quot;-screen 0 1920x1080x24&amp;quot; \
+&lt;&#x2F;span&gt;&lt;span&gt;  uv run biliup server --host 0.0.0.0 --port 19159
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Playwright Chromium 必须由实际运行服务的系统账号安装。使用 systemd、宝塔面板或 Supervisor 时，应把 &lt;code&gt;xvfb-run&lt;&#x2F;code&gt; 写入真正的启动命令并重启服务；只安装 Xvfb 或只设置 &lt;code&gt;DISPLAY=:99&lt;&#x2F;code&gt; 不会自动创建可用的显示服务。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;duo-p-hui-luan-xu-huo-lou-chuan-ma&quot;&gt;多 P 会乱序或漏传吗？&lt;&#x2F;h2&gt;
+&lt;p&gt;投稿预览中的分 P 顺序就是用户选择顺序。浏览器上传器会等待全部文件上传完成，并把捕获到的每个 &lt;code&gt;filename&lt;&#x2F;code&gt;、&lt;code&gt;biz_id&#x2F;cid&lt;&#x2F;code&gt; 按该顺序交给投稿 API；无法取得完整分 P 信息时才回退页面提交。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ren-wu-xian-shi-jie-guo-wei-zhi-shi-neng-zhi-jie-zhong-shi-ma&quot;&gt;任务显示“结果未知”时能直接重试吗？&lt;&#x2F;h2&gt;
+&lt;p&gt;不建议。结果未知表示最终投稿请求可能已经被 B 站接收，只是程序没有拿到确定响应。系统不会自动重试，以免产生重复稿件；先在创作中心检查稿件列表，确认没有生成后再手动重试。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;chuang-zuo-zhong-xin-chu-xian-pi-liang-cao-zuo-fu-ceng-zen-me-ban&quot;&gt;创作中心出现“批量操作”浮层怎么办？&lt;&#x2F;h2&gt;
+&lt;p&gt;它不是必填项，浏览器上传器会自动点击浮层内部的“取消”后继续。不要使用 F12 删除 DOM；若页面改版导致无法自动关闭，请保留脱敏日志和失败截图。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-she-zhi-lu-zhi-fen-duan&quot;&gt;如何设置录制分段？&lt;&#x2F;h2&gt;
+&lt;p&gt;在全局设置或主播覆写中配置：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;segment_time&lt;&#x2F;code&gt;：最长分段时长，格式 &lt;code&gt;HH:MM:SS&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;file_size&lt;&#x2F;code&gt;：最大分段大小，单位 Byte&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;同时设置时，先达到限制的一项结束当前分片。&lt;code&gt;segment_time&lt;&#x2F;code&gt; 不是定时录制时间范围；主播允许录制的时间范围应在主播编辑页设置。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-lu-zhi-dan-mu&quot;&gt;如何录制弹幕？&lt;&#x2F;h2&gt;
+&lt;p&gt;在主播的 Bilibili 配置覆写中开启 &lt;code&gt;bilibili_danmaku&lt;&#x2F;code&gt;。其他平台使用各自的弹幕开关，例如 &lt;code&gt;douyu_danmaku&lt;&#x2F;code&gt;、&lt;code&gt;huya_danmaku&lt;&#x2F;code&gt;、&lt;code&gt;douyin_danmaku&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;p&gt;弹幕以同名 XML 文件保存，不会自动烧录进视频。可以使用 DanmakuFactory 转为 ASS，或使用支持 XML 弹幕的播放器加载。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;qing-li-zhi-bo-li-shi-hui-shan-chu-lu-xiang-ma&quot;&gt;清理直播历史会删除录像吗？&lt;&#x2F;h2&gt;
+&lt;p&gt;不会。清理功能只删除 SQLite 中的直播历史和关联文件条目，不删除磁盘录像。投稿后的自动删除由后处理配置控制。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;wei-shen-me-ri-zhi-ye-mian-mei-you-nei-rong&quot;&gt;为什么日志页面没有内容？&lt;&#x2F;h2&gt;
+&lt;p&gt;确认：&lt;&#x2F;p&gt;
+&lt;ol&gt;
+&lt;li&gt;服务已经产生对应类别的日志。&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;BILIUP_LOG_DIR&lt;&#x2F;code&gt; 指向当前服务使用的日志目录。&lt;&#x2F;li&gt;
+&lt;li&gt;浏览器连接的是同一个服务端口。&lt;&#x2F;li&gt;
+&lt;li&gt;日志没有刚刚被手动清理。&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;日志页面按程序、录制和上传分类，同一条日志不会重复归入多个类别。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-xian-zhi-ri-zhi-he-li-shi-da-xiao&quot;&gt;如何限制日志和历史大小？&lt;&#x2F;h2&gt;
+&lt;p&gt;全局设置中配置：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;log_file_max_size_mb&lt;&#x2F;code&gt;：单个日志文件上限，保留 5 个轮转备份&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;history_max_records&lt;&#x2F;code&gt;：直播历史数据库记录上限&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;全局设置还提供“清理日志”；直播历史页面提供“清理历史”。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;shu-ju-ku-zai-na-li&quot;&gt;数据库在哪里？&lt;&#x2F;h2&gt;
+&lt;p&gt;源码默认位于项目的 &lt;code&gt;data&#x2F;data.sqlite3&lt;&#x2F;code&gt;。使用 &lt;code&gt;--home&lt;&#x2F;code&gt;、&lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt; 或 &lt;code&gt;BILIUP_DATABASE&lt;&#x2F;code&gt; 时，以指定路径为准。Docker Compose 默认映射为主机的 &lt;code&gt;.&#x2F;data&#x2F;data.sqlite3&lt;&#x2F;code&gt;。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;ru-he-sheng-ji&quot;&gt;如何升级？&lt;&#x2F;h2&gt;
+&lt;p&gt;先停止服务并备份运行目录。源码更新后执行：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;uv sync --extra dev
+&lt;&#x2F;span&gt;&lt;span&gt;npm ci
+&lt;&#x2F;span&gt;&lt;span&gt;npm run build
+&lt;&#x2F;span&gt;&lt;span&gt;uv run pytest -q
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Docker：&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;shell&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-shell &quot;&gt;&lt;code class=&quot;language-shell&quot; data-lang=&quot;shell&quot;&gt;&lt;span&gt;docker compose down
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose build --pull
+&lt;&#x2F;span&gt;&lt;span&gt;docker compose up -d
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;数据库会在启动时自动迁移，不要删除旧数据库。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;zhi-chi-na-xie-ping-tai&quot;&gt;支持哪些平台？&lt;&#x2F;h2&gt;
+&lt;p&gt;常用直播平台包括 Bilibili、斗鱼、虎牙、抖音、Twitch 和 YouTube。实际支持范围以 &lt;code&gt;biliup&#x2F;platforms&lt;&#x2F;code&gt; 中已注册的平台插件及 WebUI 可创建的 URL 为准。&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;yu-dao-wen-ti-ru-he-fan-kui&quot;&gt;遇到问题如何反馈？&lt;&#x2F;h2&gt;
+&lt;p&gt;提交问题时提供：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;版本和启动方式&lt;&#x2F;li&gt;
+&lt;li&gt;操作系统与 Python、FFmpeg 版本&lt;&#x2F;li&gt;
+&lt;li&gt;问题发生时间和最小复现步骤&lt;&#x2F;li&gt;
+&lt;li&gt;已脱敏的相关日志&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;不要提交 Cookie、账号 JSON、访问令牌、上传签名或私人录像链接。&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>Code of Conduct</title>
+        <published>2021-05-01T18:20:00+00:00</published>
+        <updated>2021-05-01T18:20:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">&lt;h2 id=&quot;our-pledge&quot;&gt;Our Pledge&lt;&#x2F;h2&gt;
+&lt;p&gt;We as members, contributors, and leaders pledge to make participation in our
+community a harassment-free experience for everyone, regardless of age, body
+size, visible or invisible disability, ethnicity, sex characteristics, gender
+identity and expression, level of experience, education, socio-economic status,
+nationality, personal appearance, race, caste, color, religion, or sexual identity
+and orientation.&lt;&#x2F;p&gt;
+&lt;p&gt;We pledge to act and interact in ways that contribute to an open, welcoming,
+diverse, inclusive, and healthy community.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;our-standards&quot;&gt;Our Standards&lt;&#x2F;h2&gt;
+&lt;p&gt;Examples of behavior that contributes to a positive environment for our
+community include:&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;Demonstrating empathy and kindness toward other people&lt;&#x2F;li&gt;
+&lt;li&gt;Being respectful of differing opinions, viewpoints, and experiences&lt;&#x2F;li&gt;
+&lt;li&gt;Giving and gracefully accepting constructive feedback&lt;&#x2F;li&gt;
+&lt;li&gt;Accepting responsibility and apologizing to those affected by our mistakes,
+and learning from the experience&lt;&#x2F;li&gt;
+&lt;li&gt;Focusing on what is best not just for us as individuals, but for the
+overall community&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;Examples of unacceptable behavior include:&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;The use of sexualized language or imagery, and sexual attention or
+advances of any kind&lt;&#x2F;li&gt;
+&lt;li&gt;Trolling, insulting or derogatory comments, and personal or political attacks&lt;&#x2F;li&gt;
+&lt;li&gt;Public or private harassment&lt;&#x2F;li&gt;
+&lt;li&gt;Publishing others&#x27; private information, such as a physical or email
+address, without their explicit permission&lt;&#x2F;li&gt;
+&lt;li&gt;Other conduct which could reasonably be considered inappropriate in a
+professional setting&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;enforcement-responsibilities&quot;&gt;Enforcement Responsibilities&lt;&#x2F;h2&gt;
+&lt;p&gt;Community leaders are responsible for clarifying and enforcing our standards of
+acceptable behavior and will take appropriate and fair corrective action in
+response to any behavior that they deem inappropriate, threatening, offensive,
+or harmful.&lt;&#x2F;p&gt;
+&lt;p&gt;Community leaders have the right and responsibility to remove, edit, or reject
+comments, commits, code, wiki edits, issues, and other contributions that are
+not aligned to this Code of Conduct, and will communicate reasons for moderation
+decisions when appropriate.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;scope&quot;&gt;Scope&lt;&#x2F;h2&gt;
+&lt;p&gt;This Code of Conduct applies within all community spaces, and also applies when
+an individual is officially representing the community in public spaces.
+Examples of representing our community include using an official e-mail address,
+posting via an official social media account, or acting as an appointed
+representative at an online or offline event.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;enforcement&quot;&gt;Enforcement&lt;&#x2F;h2&gt;
+&lt;p&gt;Instances of abusive, harassing, or otherwise unacceptable behavior may be
+reported privately to the maintainers through the
+&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;QAQ000000&#x2F;biliuppy&#x2F;issues&quot;&gt;project issue tracker&lt;&#x2F;a&gt;.
+All complaints will be reviewed and investigated promptly and fairly.&lt;&#x2F;p&gt;
+&lt;p&gt;All community leaders are obligated to respect the privacy and security of the
+reporter of any incident.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;enforcement-guidelines&quot;&gt;Enforcement Guidelines&lt;&#x2F;h2&gt;
+&lt;p&gt;Community leaders will follow these Community Impact Guidelines in determining
+the consequences for any action they deem in violation of this Code of Conduct:&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;1-correction&quot;&gt;1. Correction&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;strong&gt;Community Impact&lt;&#x2F;strong&gt;: Use of inappropriate language or other behavior deemed
+unprofessional or unwelcome in the community.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Consequence&lt;&#x2F;strong&gt;: A private, written warning from community leaders, providing
+clarity around the nature of the violation and an explanation of why the
+behavior was inappropriate. A public apology may be requested.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;2-warning&quot;&gt;2. Warning&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;strong&gt;Community Impact&lt;&#x2F;strong&gt;: A violation through a single incident or series
+of actions.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Consequence&lt;&#x2F;strong&gt;: A warning with consequences for continued behavior. No
+interaction with the people involved, including unsolicited interaction with
+those enforcing the Code of Conduct, for a specified period of time. This
+includes avoiding interactions in community spaces as well as external channels
+like social media. Violating these terms may lead to a temporary or
+permanent ban.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;3-temporary-ban&quot;&gt;3. Temporary Ban&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;strong&gt;Community Impact&lt;&#x2F;strong&gt;: A serious violation of community standards, including
+sustained inappropriate behavior.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Consequence&lt;&#x2F;strong&gt;: A temporary ban from any sort of interaction or public
+communication with the community for a specified period of time. No public or
+private interaction with the people involved, including unsolicited interaction
+with those enforcing the Code of Conduct, is allowed during this period.
+Violating these terms may lead to a permanent ban.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;4-permanent-ban&quot;&gt;4. Permanent Ban&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;strong&gt;Community Impact&lt;&#x2F;strong&gt;: Demonstrating a pattern of violation of community
+standards, including sustained inappropriate behavior,  harassment of an
+individual, or aggression toward or disparagement of classes of individuals.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Consequence&lt;&#x2F;strong&gt;: A permanent ban from any sort of public interaction within
+the community.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;attribution&quot;&gt;Attribution&lt;&#x2F;h2&gt;
+&lt;p&gt;This Code of Conduct is adapted from the &lt;a href=&quot;https:&#x2F;&#x2F;www.contributor-covenant.org&quot;&gt;Contributor Covenant&lt;&#x2F;a&gt;,
+version 2.0, available at
+&lt;a href=&quot;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;version&#x2F;2&#x2F;0&#x2F;code_of_conduct.html&quot;&gt;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;version&#x2F;2&#x2F;0&#x2F;code_of_conduct.html&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;Community Impact Guidelines were inspired by 
+&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;mozilla&#x2F;diversity&quot;&gt;Mozilla&#x27;s code of conduct enforcement ladder&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;For answers to common questions about this code of conduct, see the FAQ at
+&lt;a href=&quot;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;faq&quot;&gt;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;faq&lt;&#x2F;a&gt;. Translations are available 
+at &lt;a href=&quot;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;translations&quot;&gt;https:&#x2F;&#x2F;www.contributor-covenant.org&#x2F;translations&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>How to Contribute</title>
+        <published>2021-05-01T18:10:00+00:00</published>
+        <updated>2025-08-01T18:10:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/">&lt;h2 id=&quot;gong-xian-dai-ma&quot;&gt;贡献代码&lt;&#x2F;h2&gt;
+&lt;p&gt;biliup 项目采用 Python + FastAPI + Next.js 架构，欢迎贡献代码。&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;xiang-mu-jie-gou&quot;&gt;项目结构&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;biliup&#x2F;&lt;&#x2F;code&gt; - Python API、数据库、调度、录制和上传&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;app&#x2F;&lt;&#x2F;code&gt; - Next.js 前端（WebUI）&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;tests&#x2F;&lt;&#x2F;code&gt; - 离线自动化测试&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;kai-fa-liu-cheng&quot;&gt;开发流程&lt;&#x2F;h3&gt;
+&lt;ol&gt;
+&lt;li&gt;Fork 项目到自己的仓库&lt;&#x2F;li&gt;
+&lt;li&gt;创建特性分支：&lt;code&gt;git checkout -b feat&#x2F;your-feature&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;提交变更：&lt;code&gt;git commit -m &amp;quot;feat: add your feature&amp;quot;&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;推送到分支：&lt;code&gt;git push origin feat&#x2F;your-feature&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;提交 Pull Request&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;h3 id=&quot;ti-jiao-gui-fan&quot;&gt;提交规范&lt;&#x2F;h3&gt;
+&lt;p&gt;请遵循 &lt;a href=&quot;https:&#x2F;&#x2F;www.conventionalcommits.org&#x2F;en&#x2F;v1.0.0&#x2F;&quot;&gt;Conventional Commits&lt;&#x2F;a&gt; 规范：&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;feat:&lt;&#x2F;code&gt; 新功能&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;fix:&lt;&#x2F;code&gt; 修复bug&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;docs:&lt;&#x2F;code&gt; 文档更新&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;refactor:&lt;&#x2F;code&gt; 重构&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;chore:&lt;&#x2F;code&gt; 构建过程或辅助工具的变动&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;bao-gao-wen-ti&quot;&gt;报告问题&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;QAQ000000&#x2F;biliuppy&#x2F;issues&#x2F;new?template=bug-report.yaml&quot;&gt;Bug report&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;QAQ000000&#x2F;biliuppy&#x2F;discussions&#x2F;new?category=ideas&quot;&gt;Feature request&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;gai-jin-wen-dang&quot;&gt;改进文档&lt;&#x2F;h2&gt;
+&lt;p&gt;文档位于项目 &lt;code&gt;docs&#x2F;&lt;&#x2F;code&gt; 目录下，使用 Zola 静态站点生成器构建。
+欢迎提交 PR 改进文档内容。&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>更新日志</title>
+        <published>2021-05-01T08:20:00+00:00</published>
+        <updated>2026-08-09T08:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://qaq000000.github.io/biliuppy/docs/guide/changelog/"/>
+        <id>https://qaq000000.github.io/biliuppy/docs/guide/changelog/</id>
+        
+        <content type="html" xml:base="https://qaq000000.github.io/biliuppy/docs/guide/changelog/">&lt;h2 id=&quot;biao-qian-han-yi&quot;&gt;标签含义&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;💡新添加的功能&lt;&#x2F;li&gt;
+&lt;li&gt;🔧已修复的问题&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️需要手动操作的更新信息&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;1-1-7-python-edition-2026-08-02&quot;&gt;1.1.7 Python Edition - 2026-08-02&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;bulb-xin-tian-jia-de-gong-neng&quot;&gt;💡新添加的功能&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;后端、调度、平台检测、B 站登录和投稿链路统一为 Python&lt;&#x2F;li&gt;
+&lt;li&gt;FastAPI 提供 WebUI 与兼容 API，SQLAlchemy&#x2F;Alembic 管理 SQLite&lt;&#x2F;li&gt;
+&lt;li&gt;FFmpeg 分段录制、任务暂停、下播确认、上传失败重试与录像保留&lt;&#x2F;li&gt;
+&lt;li&gt;B 站扫码登录、手动重传、上传线路选择、分片并发和进度日志&lt;&#x2F;li&gt;
+&lt;li&gt;Playwright 创作中心高速上传，上传完成后切换 Python Web API 投稿&lt;&#x2F;li&gt;
+&lt;li&gt;投稿预览展示变量展开结果、元数据来源和多 P 选择顺序&lt;&#x2F;li&gt;
+&lt;li&gt;日志分类、轮转、大小上限、脱敏和清理&lt;&#x2F;li&gt;
+&lt;li&gt;直播历史分页、数量上限和清理，清理不会删除磁盘录像&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;wrench-yi-xiu-fu-de-wen-ti&quot;&gt;🔧已修复的问题&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修复开播、录制、下播、分段、历史入库和自动投稿生命周期&lt;&#x2F;li&gt;
+&lt;li&gt;修复投稿参数兼容、APP&#x2F;Web 提交结果判断及上传线路切换&lt;&#x2F;li&gt;
+&lt;li&gt;修复日志页面无法读取、重复显示和缺少上传日志的问题&lt;&#x2F;li&gt;
+&lt;li&gt;修复 Next.js 静态导出 RSC 路径与 HEAD 请求，减少 WebUI 切页延迟&lt;&#x2F;li&gt;
+&lt;li&gt;缓存 B 站账号资料和头像，避免多个组件重复外部请求&lt;&#x2F;li&gt;
+&lt;li&gt;修复浏览器模式多 P 捕获、顺序保持和仅上传 P1 后提前关闭的问题&lt;&#x2F;li&gt;
+&lt;li&gt;投稿结果未知时禁止自动重试，避免超时或断连造成重复稿件&lt;&#x2F;li&gt;
+&lt;li&gt;自动取消创作中心可选的“批量操作”浮层&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;warning-sheng-ji-shuo-ming&quot;&gt;⚠️升级说明&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;启动时自动迁移已有 SQLite 数据库，不要删除或重建旧数据库&lt;&#x2F;li&gt;
+&lt;li&gt;升级前停止服务并备份 &lt;code&gt;BILIUP_HOME&lt;&#x2F;code&gt;，至少备份数据库和账号 JSON&lt;&#x2F;li&gt;
+&lt;li&gt;发布 wheel 已包含 WebUI；源码更新后需重新执行 &lt;code&gt;npm run build&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;1-1-6&quot;&gt;1.1.6&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update Termux-publish.yml by @Heporis in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1474&quot;&gt;#1474&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.5...v1.1.6&quot;&gt;v1.1.5...v1.1.6&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-5&quot;&gt;1.1.5&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-1&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;chore: Docker Build CI 改用 native arm64 runner by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1470&quot;&gt;#1470&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.4...v1.1.5&quot;&gt;v1.1.4...v1.1.5&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-4&quot;&gt;1.1.4&lt;&#x2F;h2&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.3...v1.1.4&quot;&gt;v1.1.3...v1.1.4&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-3&quot;&gt;1.1.3&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-2&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Fix(Docker): Run with wheel instead by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1468&quot;&gt;#1468&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.2...v1.1.3&quot;&gt;v1.1.2...v1.1.3&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-2&quot;&gt;1.1.2&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-3&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;chore: 同步更新 UploadLines by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1466&quot;&gt;#1466&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.1...v1.1.2&quot;&gt;v1.1.1...v1.1.2&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-1&quot;&gt;1.1.1&lt;&#x2F;h2&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.1.0...v1.1.1&quot;&gt;v1.1.0...v1.1.1&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-1-0&quot;&gt;1.1.0&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-4&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Flextv由原地址 https:&#x2F;&#x2F;www.flextv.co.k 更改为 https:&#x2F;&#x2F;www.ttinglive.com by @897601689 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1430&quot;&gt;#1430&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix(bilibili-rs): Usu https instead of http by @HsuJv in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1429&quot;&gt;#1429&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;refactor(Douyu): 去除对 JSEngine 的强依赖 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1448&quot;&gt;#1448&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Douyin): add abogus by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1451&quot;&gt;#1451&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: plugins.Picarto by @cykac04 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1452&quot;&gt;#1452&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix: Enhance filename handling for percent signs by @Ninzore in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1458&quot;&gt;#1458&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(upload): fix glitches in max_upload_limit by @DetectiveLemon in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1459&quot;&gt;#1459&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix api missing NSFW streams by @cykac04 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1454&quot;&gt;#1454&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@HsuJv made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1429&quot;&gt;#1429&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;@cykac04 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1452&quot;&gt;#1452&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;@Ninzore made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1458&quot;&gt;#1458&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.102...v1.1.0&quot;&gt;v0.4.102...v1.1.0&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-7&quot;&gt;1.0.7&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-5&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修复扫码接口鉴权失败的问题 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1417&quot;&gt;#1417&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update Termux-publish.yml by @Heporis in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1419&quot;&gt;#1419&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.6...v1.0.7&quot;&gt;v1.0.6...v1.0.7&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-6&quot;&gt;1.0.6&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-6&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修改充电参数open_elec为charging_pay by @897601689 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1410&quot;&gt;#1410&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(huya): change huya presenter_uid type from i32 to i64 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1412&quot;&gt;#1412&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(bbrs): upload_by_config 支持 submit 选择 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1413&quot;&gt;#1413&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.5...v1.0.6&quot;&gt;v1.0.5...v1.0.6&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-5&quot;&gt;1.0.5&lt;&#x2F;h2&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.4...v1.0.5&quot;&gt;v1.0.4...v1.0.5&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-4&quot;&gt;1.0.4&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-7&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;增加app接口 修改稿件 by @897601689 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1399&quot;&gt;#1399&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(stream-gears): 支持直播流下载的多条件分割 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1400&quot;&gt;#1400&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(biliup-rs): 新增 BCut Android 投稿接口 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1402&quot;&gt;#1402&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(blive): parse error by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1405&quot;&gt;#1405&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-1&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@897601689 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1399&quot;&gt;#1399&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.3...v1.0.4&quot;&gt;v1.0.3...v1.0.4&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-3&quot;&gt;1.0.3&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-8&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;更改Termux的wheel发布至Release by @Heporis in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1371&quot;&gt;#1371&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix: Prioritize defined title format for sync-downloader by @ransxd in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1315&quot;&gt;#1315&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;添加登录页面 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1375&quot;&gt;#1375&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(douyin): 修复抖音直播流获取问题 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1378&quot;&gt;#1378&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;优化登录功能 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1386&quot;&gt;#1386&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(Huya): 支持 Huya Wup 协议以获取正确直播流 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1385&quot;&gt;#1385&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;remove: blive hack feature by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1394&quot;&gt;#1394&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.2...v1.0.3&quot;&gt;v1.0.2...v1.0.3&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-2&quot;&gt;1.0.2&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-9&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;为aarch64架构termux平台自动构建 by @Heporis in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1369&quot;&gt;#1369&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.102...v1.0.2&quot;&gt;v0.4.102...v1.0.2&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-1&quot;&gt;1.0.1&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-10&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;feat: 新增上传重试次数限制和上传结果webhook通知 by @unknown-o in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1355&quot;&gt;#1355&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v1.0.0...v1.0.1&quot;&gt;v1.0.0...v1.0.1&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;1-0-0&quot;&gt;1.0.0&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-11&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Fix pyinstaller copy metadata by @ForgQi in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1357&quot;&gt;#1357&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.102...v1.0.0&quot;&gt;v0.4.102...v1.0.0&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-102&quot;&gt;0.4.102&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-12&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix: 回滚文件名编解码返回逻辑以修复直接出现 unicode 的问题 by @ZXGU183 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1325&quot;&gt;#1325&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Docker): 声明字符编码以解决乱码问题 by @ZXGU183 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1338&quot;&gt;#1338&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Upload): bili_web 上传插件适配 biliup-rs 生成的 cookie file，stream-gears 上传接口默认修改为 app by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1347&quot;&gt;#1347&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;修复B站弹幕问题 by @unknown-o in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1342&quot;&gt;#1342&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-2&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@ZXGU183 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1325&quot;&gt;#1325&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.100...v0.4.102&quot;&gt;v0.4.100...v0.4.102&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-100&quot;&gt;0.4.100&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-13&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Feat(Youtube): 拆分 YoutubeLive，添加 ytarchive 支持 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1307&quot;&gt;#1307&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.99...v0.4.100&quot;&gt;v0.4.99...v0.4.100&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-99&quot;&gt;0.4.99&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-14&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;可能修复了边录边传稿件标题为直播间标题和简介未格式化的情况 by @ransxd in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1297&quot;&gt;#1297&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Plugins.Huya): 修复当标题存在转义字符时正则匹配失败的问题 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1301&quot;&gt;#1301&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Danmaku.bilibili): 修复B站弹幕连接异常 by @DetectiveLemon in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1311&quot;&gt;#1311&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-3&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@ransxd made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1297&quot;&gt;#1297&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.98...v0.4.99&quot;&gt;v0.4.98...v0.4.99&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-98&quot;&gt;0.4.98&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-15&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix(Plugins.Huya): Update HuYaUA by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1291&quot;&gt;#1291&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.97...v0.4.98&quot;&gt;v0.4.97...v0.4.98&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-97&quot;&gt;0.4.97&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-16&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix: 修复播完自动上传时，仅自己可见状态失效 by @gweesin in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1276&quot;&gt;#1276&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: 适配TwitCasting,TwitCasting添加Cookie,TwitCasting添加画质选择 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1282&quot;&gt;#1282&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.96...v0.4.97&quot;&gt;v0.4.96...v0.4.97&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-96&quot;&gt;0.4.96&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-17&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;feat: 移动端响应式增强 by @gweesin in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1266&quot;&gt;#1266&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(huya): update ua ts calculation and mobile api key error by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1271&quot;&gt;#1271&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.95...v0.4.96&quot;&gt;v0.4.95...v0.4.96&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-95&quot;&gt;0.4.95&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-18&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;docs: 修复开发环境缺失的步骤 by @gweesin in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1262&quot;&gt;#1262&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;chore(Dockerfile): 更新Dockerfile配置 by @SimonGino in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1260&quot;&gt;#1260&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: 支持仅自己可见开关 by @gweesin in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1261&quot;&gt;#1261&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: ncp and sass should not production dependencies by @gweesin in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1265&quot;&gt;#1265&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: 抖音真原画 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1267&quot;&gt;#1267&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-4&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@gweesin made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1262&quot;&gt;#1262&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;@SimonGino made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1260&quot;&gt;#1260&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.94...v0.4.95&quot;&gt;v0.4.94...v0.4.95&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-94&quot;&gt;0.4.94&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-19&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;增加+ by @TajangSec in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1249&quot;&gt;#1249&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(douyu): 构建斗鱼直播 tct &amp;amp; hs 流链接 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1256&quot;&gt;#1256&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-5&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@TajangSec made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1249&quot;&gt;#1249&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.93...v0.4.94&quot;&gt;v0.4.93...v0.4.94&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-93&quot;&gt;0.4.93&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-20&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;refactor: plugins.Huya by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1238&quot;&gt;#1238&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.92...v0.4.93&quot;&gt;v0.4.92...v0.4.93&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-92&quot;&gt;0.4.92&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-21&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix 修复一些边录边传下载器的bug by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1220&quot;&gt;#1220&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;mod: 修改原始弹幕录制逻辑 by @unknown-o in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1217&quot;&gt;#1217&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: Implement WBI signing mechanism for Bilibili API requests by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1223&quot;&gt;#1223&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.91...v0.4.92&quot;&gt;v0.4.91...v0.4.92&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-91&quot;&gt;0.4.91&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-22&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;webui: 录制时间范围改用TimePicker，选择时间 by @ruinmi in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1211&quot;&gt;#1211&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: stream-gears上传投稿参数错误 by @hxzll in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1221&quot;&gt;#1221&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: 修复streamlink下载器header参数 by @dreammu in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1218&quot;&gt;#1218&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-6&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@hxzll made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1221&quot;&gt;#1221&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.90...v0.4.91&quot;&gt;v0.4.90...v0.4.91&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-90&quot;&gt;0.4.90&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-23&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Add 添加实时日志展示 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1210&quot;&gt;#1210&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Bump version to 0.4.90 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1215&quot;&gt;#1215&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.89...v0.4.90&quot;&gt;v0.4.89...v0.4.90&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-89&quot;&gt;0.4.89&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-24&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix: 移除streamlink的弃用参数 by @dreammu in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1201&quot;&gt;#1201&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix 修复一些问题 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1207&quot;&gt;#1207&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update README.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1205&quot;&gt;#1205&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: 支持B站完整弹幕录制 by @unknown-o in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1186&quot;&gt;#1186&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feature: 关键词不录播 by @ruinmi in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1200&quot;&gt;#1200&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: 回归下载器选择streamlink时的正常行为 by @dreammu in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1202&quot;&gt;#1202&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.88...v0.4.89&quot;&gt;v0.4.88...v0.4.89&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-88&quot;&gt;0.4.88&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-25&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix(Huya): 星秀区下载错误 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1197&quot;&gt;#1197&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.87...v0.4.88&quot;&gt;v0.4.87...v0.4.88&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-87&quot;&gt;0.4.87&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-26&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update dependencies and Python version requirements by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1185&quot;&gt;#1185&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.86...v0.4.87&quot;&gt;v0.4.86...v0.4.87&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-86&quot;&gt;0.4.86&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-27&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update pyproject.toml by @ZRdRy in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1183&quot;&gt;#1183&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-7&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@ZRdRy made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1183&quot;&gt;#1183&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.85...v0.4.86&quot;&gt;v0.4.85...v0.4.86&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-85&quot;&gt;0.4.85&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-28&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Fix: 解决边录边传中默认值错误导致的异常 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1159&quot;&gt;#1159&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;B站弹幕部分的参数兼容DanmakuFactory可识别用户名 by @rslywhj in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1172&quot;&gt;#1172&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix非详细弹幕content丢失 by @rslywhj in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1175&quot;&gt;#1175&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: Use system certificate store by default by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1176&quot;&gt;#1176&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Dev 修复边录边传的一些bug by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1167&quot;&gt;#1167&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;logo readme up by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1164&quot;&gt;#1164&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-8&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@rslywhj made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1172&quot;&gt;#1172&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.84...v0.4.85&quot;&gt;v0.4.84...v0.4.85&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-84&quot;&gt;0.4.84&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-29&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update layout.tsx by @q8018414 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1156&quot;&gt;#1156&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;相似备注检查跳过自身；格式化用户模板提交之数据 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1157&quot;&gt;#1157&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Bumping version by @ForgQi in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1158&quot;&gt;#1158&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-9&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@q8018414 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1156&quot;&gt;#1156&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.83...v0.4.84&quot;&gt;v0.4.83...v0.4.84&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-83&quot;&gt;0.4.83&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-30&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;README changelog Update by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1153&quot;&gt;#1153&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: Add override configuration support for streamers by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1151&quot;&gt;#1151&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.82...v0.4.83&quot;&gt;v0.4.82...v0.4.83&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-82&quot;&gt;0.4.82&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;0-4-81&quot;&gt;0.4.81&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-31&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;feat: B站弹幕录制优化 by @unknown-o in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1120&quot;&gt;#1120&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-10&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@unknown-o made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1120&quot;&gt;#1120&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.80...v0.4.81&quot;&gt;v0.4.80...v0.4.81&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-80&quot;&gt;0.4.80&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-32&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix: dtime by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1121&quot;&gt;#1121&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;修复延迟发布（来自赞助者的要求）。 resolves &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1106&quot;&gt;#1106&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;更换播放器以支持 mp4 封装和 HEVC on FLV。 fixes &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1117&quot;&gt;#1117&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fixes &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1116&quot;&gt;#1116&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.79...v0.4.80&quot;&gt;v0.4.79...v0.4.80&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-79&quot;&gt;0.4.79&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-33&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;web ui 功能更改；增加录制时间范围功能 by @ruinmi in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1017&quot;&gt;#1017&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;style: refactor mobile client header style by @see-more in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1064&quot;&gt;#1064&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update README.md Docker by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1080&quot;&gt;#1080&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(huya): skip query param generation for &amp;quot;xingxiu&amp;quot; streamers by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1099&quot;&gt;#1099&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Feat(webui): 深色模式添加自动跟随系统，添加格式化配置文件。 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1109&quot;&gt;#1109&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: enhance dashboard and plugin by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1114&quot;&gt;#1114&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-11&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@ruinmi made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1017&quot;&gt;#1017&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;@see-more made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1064&quot;&gt;#1064&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.78...v0.4.79&quot;&gt;v0.4.78...v0.4.79&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-78&quot;&gt;0.4.78&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-34&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Fix(Douyin): 修复 PCWeb 直播页电台类型直播录制 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1044&quot;&gt;#1044&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix(Upload): 重传时未能从数据库获取直播信息 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1045&quot;&gt;#1045&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.77...v0.4.78&quot;&gt;v0.4.77...v0.4.78&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-77&quot;&gt;0.4.77&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-35&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix[build]: 修复直接提交 commit时，ci 构建失败的问题 by @XiaoMiku01 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1037&quot;&gt;#1037&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: 虎牙弹幕丢失 (&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;949&quot;&gt;#949&lt;&#x2F;a&gt;) by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1035&quot;&gt;#1035&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(Huya): platform_id error by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1039&quot;&gt;#1039&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-12&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@XiaoMiku01 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1037&quot;&gt;#1037&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.76...v0.4.77&quot;&gt;v0.4.76...v0.4.77&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-76&quot;&gt;0.4.76&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-36&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修复v0.4.75抖音默认开启录制弹幕的问题 by @hfdem in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1022&quot;&gt;#1022&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix(webui): 修复直播历史与历史记录排序问题 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1025&quot;&gt;#1025&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;flx(build): 修复&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1025&quot;&gt;#1025&lt;&#x2F;a&gt; npm会编译失败的问题 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1031&quot;&gt;#1031&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-13&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@hfdem made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1022&quot;&gt;#1022&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.75...v0.4.76&quot;&gt;v0.4.75...v0.4.76&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-75&quot;&gt;0.4.75&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-37&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;支持抖音短链录制弹幕 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1015&quot;&gt;#1015&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.74...v0.4.75&quot;&gt;v0.4.74...v0.4.75&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-74&quot;&gt;0.4.74&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-38&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修复变量未定义 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1012&quot;&gt;#1012&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.73...v0.4.74&quot;&gt;v0.4.73...v0.4.74&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-73&quot;&gt;0.4.73&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-39&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;适配抖音短链、电台、多屏直播 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;1010&quot;&gt;#1010&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.72...v0.4.73&quot;&gt;v0.4.72...v0.4.73&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-71-0-4-72&quot;&gt;0.4.71-0.4.72&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-40&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;update Readme by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;992&quot;&gt;#992&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: 在没有配置最大码率时跳过码率选择 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;993&quot;&gt;#993&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: Add cache during runtime by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;995&quot;&gt;#995&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.71...v0.4.72&quot;&gt;v0.4.71...v0.4.72&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-69-0-4-70&quot;&gt;0.4.69-0.4.70&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-41&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Add by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;976&quot;&gt;#976&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat: danmaku xml 兼容b站格式 by @BugKun in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;985&quot;&gt;#985&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;减少douyu通过发送请求获取房间号次数 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;950&quot;&gt;#950&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(Huya): use the api to get live streams by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;986&quot;&gt;#986&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-14&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@BugKun made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;985&quot;&gt;#985&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.70...v0.4.71&quot;&gt;v0.4.70...v0.4.71&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-69-0-4-70-1&quot;&gt;0.4.69-0.4.70&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-42&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;fix: first run error by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;968&quot;&gt;#968&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.69...v0.4.70&quot;&gt;v0.4.69...v0.4.70&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-68-0-4-69&quot;&gt;0.4.68-0.4.69&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-43&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧feat(download): Support hls for huya, douyin by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;958&quot;&gt;#958&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;fix: val name err by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;962&quot;&gt;#962&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Minimal import by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;963&quot;&gt;#963&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧fix(douyin-danmaku): include signature parameter by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;967&quot;&gt;#967&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.68...v0.4.69&quot;&gt;v0.4.68...v0.4.69&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-60-0-4-68&quot;&gt;0.4.60-0.4.68&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-44&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧修正不存在配置时出现的错误引用 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;933&quot;&gt;#933&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update CHANGELOG.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;932&quot;&gt;#932&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧更新 CC 平台 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;936&quot;&gt;#936&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;限制 Twitch 同时查询数量 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;941&quot;&gt;#941&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;feat(Douyu): 拒绝互动游戏 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;943&quot;&gt;#943&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix(Blive): 原画优先 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;946&quot;&gt;#946&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.60...v0.4.68&quot;&gt;v0.4.60...v0.4.68&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-59-0-4-60&quot;&gt;0.4.59-0.4.60&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-45&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update README.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;930&quot;&gt;#930&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;行为调整 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;925&quot;&gt;#25&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;适配白色背景 by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;931&quot;&gt;#931&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.59...v0.4.60&quot;&gt;v0.4.59...v0.4.60&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-58-0-4-59&quot;&gt;0.4.58-0.4.59&lt;&#x2F;h2&gt;
+&lt;p&gt;⚠️⚠️⚠️⚠️⚠️此版本twitch无法正常下载，建议降级v0.4.57,待修复。&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;what-s-changed-46&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update README.md by @ikun1993 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;926&quot;&gt;#926&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;下载流程调整 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;927&quot;&gt;#927&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.58...v0.4.59&quot;&gt;v0.4.58...v0.4.59&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-57-0-4-58&quot;&gt;0.4.57-0.4.58&lt;&#x2F;h2&gt;
+&lt;p&gt;⚠️⚠️⚠️⚠️⚠️此版本twitch无法正常下载，建议降级v0.4.57,待修复。&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;what-s-changed-47&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧使上传转载来源生效 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;910&quot;&gt;#910&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;909&quot;&gt;#909&lt;&#x2F;a&gt;补充 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;916&quot;&gt;#916&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;下载流程优化 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;917&quot;&gt;#917&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;避免streamlink进程残留 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;918&quot;&gt;#918&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;精简 Docker 镜像 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;921&quot;&gt;#921&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;:&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.57...v0.4.58&quot;&gt;v0.4.57...v0.4.58&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-56-0-4-57&quot;&gt;0.4.56-0.4.57&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-48&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;下载流程调整 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;906&quot;&gt;#906&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.56...v0.4.57&quot;&gt;#v0.4.56...v0.4.57&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-55-0-4-56&quot;&gt;0.4.55-0.4.56&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-49&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧修复按大小分段 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;904&quot;&gt;#904&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.55...v0.4.56&quot;&gt;v0.4.55...v0.4.6&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-54-0-4-55&quot;&gt;0.4.54-0.4.55&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-50&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update README.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;899&quot;&gt;#899&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update CHANGELOG.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;900&quot;&gt;#900&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧防止分段后处理超出预期的执行次数 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;895&quot;&gt;#902&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;下载功能调整 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;902&quot;&gt;#902&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Webui 优化 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;903&quot;&gt;#903&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.54...v0.4.55&quot;&gt;v0.4.54...v0.4.55&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-52-0-4-54&quot;&gt;0.4.52-0.4.54&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-chang&quot;&gt;What&#x27;s Chang&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;💡任务平台&lt;&#x2F;li&gt;
+&lt;li&gt;💡QRcode扫码登陆&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;：&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.52...v0.4.54&quot;&gt;v0.4.52-v0.4.54&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-52&quot;&gt;0.4.52&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-chang-1&quot;&gt;What&#x27;s Chang&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Update CHANGELOG.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;880&quot;&gt;#880&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧缓解 HTTP 漏洞 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;877&quot;&gt;#877&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update CHANGELOG.md by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;882&quot;&gt;#882&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update bug-report.yaml by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;885&quot;&gt;#885&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;remove some shields by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;886&quot;&gt;#886&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;小小美化一下 by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;888&quot;&gt;#888&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Update cookie.tsx by @ikun1993 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;889&quot;&gt;#889&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;优化显示 by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;890&quot;&gt;#890&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;优化排版&#x2F;链接 by @viondw in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;891&quot;&gt;#891&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;：&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.51...v0.4.52&quot;&gt;v0.4.51...v0.4.52&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-51&quot;&gt;0.4.51&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-chang-2&quot;&gt;What&#x27;s Chang&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;💡新增分段后处理功能(返回当前分段的视频文件 只支持run指令) by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;868&quot;&gt;#868&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复WebUI 405 Method Not Allowed by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;878&quot;&gt;#878&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.50...v0.4.51&quot;&gt;v0.4.50...v0.4.51&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-50&quot;&gt;0.4.50&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-51&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧修复排序错误 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;865&quot;&gt;#865&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复Youtube在下载完成前的意外错误 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;869&quot;&gt;#869&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡适配FlexTv by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;870&quot;&gt;#870&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧避免虎牙在选取码率时发生错误后依旧继续执行 by @CoolZxp in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;871&quot;&gt;#871&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡适配 Twitcasting.TV by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;874&quot;&gt;#874&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.49...v0.4.50&quot;&gt;v0.4.49...v0.4.50&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-47-0-4-49&quot;&gt;0.4.47-0.4.49&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;what-s-changed-52&quot;&gt;What&#x27;s Changed&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;修复录播管理页卡片重叠问题 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;851&quot;&gt;#851&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;录播管理页面卡片样式优化 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;861&quot;&gt;#861&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;调整功能 by @xxxxuanran in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;860&quot;&gt;#860&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix：日志格式以及丢失问题 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;864&quot;&gt;#864&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.48...v0.4.49&quot;&gt;v0.4.28...v0.4.49&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-40-0-4-46&quot;&gt;0.4.40-0.4.46&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;添加日志下载按钮&lt;&#x2F;li&gt;
+&lt;li&gt;修复一些bug&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-39&quot;&gt;0.4.39&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧修复少量bug by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;832&quot;&gt;#832&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.38...v0.4.39&quot;&gt;v0.4.38...v0.4.39&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-38&quot;&gt;0.4.38&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;WebUI交互优化 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;826&quot;&gt;#826&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix: datetime被过滤、新建空间配置无法保存 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;827&quot;&gt;#827&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.37...v0.4.38&quot;&gt;v0.4.37...v0.4.38&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-37&quot;&gt;0.4.37&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧紧急修复&lt;code&gt;URL build&lt;&#x2F;code&gt;报错 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;823&quot;&gt;#823&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;UI代码组件化，修复部分选项BUG，文字表述优化，新增日志配置项。 by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;822&quot;&gt;#822&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Refactoring database using sqlalchemy by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;818&quot;&gt;#818&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.36...v0.4.37&quot;&gt;v0.4.36...v0.4.37&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-36&quot;&gt;0.4.36&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;修复码率类型错误、部分选项默认开启、投稿标签添加限制 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;815&quot;&gt;#815&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;保证生成的视频文件后缀为小写 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;813&quot;&gt;#813&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;增加找不到 cookies 时文件时未知提示 by @buyfakett in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;816&quot;&gt;#816&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Fix: refined the webui. by @alpzmj9 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;817&quot;&gt;#817&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;添加--no-access-log参数、修改webui启动提示 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;821&quot;&gt;#821&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h3 id=&quot;new-contributors-15&quot;&gt;New Contributors&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;@buyfakett made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;816&quot;&gt;#816&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;@alpzmj9 made their first contribution in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;817&quot;&gt;#817&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.35...v0.4.36&quot;&gt;v0.4.35...v0.4.36&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-35&quot;&gt;0.4.35&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;添加 webui 缺失的配置项，修复账号信息显示问题 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;792&quot;&gt;#792&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧Fix: 上传插件和简介艾特无法取消选择、分段大小单位错误 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;796&quot;&gt;#796&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧Fix: Twitch录制报错 by @boxie123 in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;800&quot;&gt;#800&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复webui的某些输入框类型问题 by @Kataick in &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;pull&#x2F;814&quot;&gt;#814&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;Full Changelog&lt;&#x2F;strong&gt;: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;biliup&#x2F;biliup&#x2F;compare&#x2F;v0.4.34...v0.4.35&quot;&gt;v0.4.34...v0.4.35&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;0-4-34&quot;&gt;0.4.34&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2024.01.27&lt;&#x2F;li&gt;
+&lt;li&gt;新增随机UA功能以及统一使用来解决部分平台请求API&#x2F;弹幕录制风控问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;优化webui处理时间的函数&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧解决文件上传乱序的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;storyxc&quot;&gt;@storyxc&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧解决从旧版Config中读取postprocessor指令并写入数据库的格式错误，导致postprocessor无法执行的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;boxie123&quot;&gt;@boxie123&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-32-0-4-33&quot;&gt;0.4.32-0.4.33&lt;&#x2F;h2&gt;
+&lt;p&gt;⚠️⚠️⚠️⚠️⚠️⚠️超大版本更新，在升级到此版本之前请认真阅读说明。&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧自动修正stream_gears设置不支持的format &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复分段下载时streamlink不会退出的问题  &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;dreammu&quot;&gt;@dreammu&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡AfreecaTV添加账号密码登陆,直播间标题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复快手直播录制,因风控严格暂时移除快手cdn及流类型选择 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化 BiliLive 部分运行逻辑 （添加登录验证，原画链接复用 使用移动端房间信息，获取正确 emoji 标题）&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡数据库存档 （代理原本的config文件，在此版本之后，老版本的config将会在第一次启动被读取并写入新的数据库中，之后将不在使用config文件）&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;boxie123&quot;&gt;@boxie123&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复在py3.7版本运行问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡添加bigo支持 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧兼容 stream-gears 在无 Cookie 时的下载 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧标题为空时下载报错 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;boxie123&quot;&gt;@boxie123&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复弹幕重新连接时覆盖原有弹幕问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复斗鱼下播后可能会录制回放问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复使用biliup-rs上传后内存不会清空的问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧猫耳FM提供格式默认值&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增WEBUI支持，可在WEBUI进行所有的设置与管理。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;boxie123&quot;&gt;@boxie123&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-31&quot;&gt;0.4.31&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.09.12&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复抖音弹幕问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-30-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.30 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.09.12&lt;&#x2F;li&gt;
+&lt;li&gt;🔧youtube配置说明修改&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧避免Windows可能的弹幕录制任务关闭失败&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧为部分检测添加超时时间避免检测时间过长&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整弹幕录制日志&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧斗鱼录制及弹幕对URL支持同步&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复斗鱼弹幕缺失&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复Bilibili弹幕缺失&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧抖音录制及弹幕对URL支持同步&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧抖音弹幕也会使用配置内的Cookie&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧适配新版抖音录制及弹幕&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化Bilibili提示报错&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧补全yaml配置文件抖音画质符号&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube添加缓存&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube跳过检测after_date日期后的视频及直播&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️修改preprocessor(下载直播),downloaded_processor(上传直播)时返回的开播及下播时间为时间戳&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-29&quot;&gt;0.4.29&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.08.04&lt;&#x2F;li&gt;
+&lt;li&gt;🔧youtube配置说明修改&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧将上传录像时可以开始新的录制调整为默认功能&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧下载上传逻辑调整&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧上传后正确的删除弹幕&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧downloaded_processor的时间被正确格式化以及明确时间默认值&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧downloaded_processor的参数被正确格式化&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧bili_web强制选择UpOS模式下的线路&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;1toldyou&quot;&gt;@1toldyou&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧正确的检测进程空闲状态&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧正确的重启进程&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube添加单独下载直播和回放选项&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube添加streams playlists shorts类型链接支持&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube添加筛选无效时提示&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡youtube不会在运行目录产生多余文件了&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡封面下载支持webp&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡启动时删除临时缓存文件&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-28&quot;&gt;0.4.28&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.07.30&lt;&#x2F;li&gt;
+&lt;li&gt;🔧在读取youtube缓存失败时增加提示&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整twitch日志输出&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整twitch youtube封面下载逻辑&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复youtube视频录制异常中断时多余文件不删除&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧兼容低版本python&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧斗鱼请求优化&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧斗鱼适配移动端url&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧斗鱼避免下播时可能的异常&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧避免上传时由于操作文件权限不足导致后处理失败&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧补充downloaded_processor toml配置&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧删除多余日志输出&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧让检测后能更快的开始下载&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复快手录制问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡上传后封面自动删除&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡downloaded_processor增加返回参数(下播时间和视频列表)&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡stream-gears升级至0.1.19&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-27&quot;&gt;0.4.27&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.07.29&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复虎牙拉流403分段问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧统一download.py的输出格式&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复抖音弹幕分段与录制stop的问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整直播流获取失败及下播延迟检测功能&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化下载流程与下载日志逻辑以及下播检测延迟阈值&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧虎牙画质修复&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整封面下载逻辑&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧调整批量检测功能&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化youtube与twitch下载策略&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡添加斗鱼,虎牙,哔哩哔哩,抖音自选画质&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;CoolZxp&quot;&gt;@CoolZxp&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-26&quot;&gt;0.4.26&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.07.27&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复虎牙直播流下载的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-25&quot;&gt;0.4.25&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.07.27&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增NOW直播&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增映客直播&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加downloaded_processor功能，支持结束录制时执行指定Shell指令&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-24&quot;&gt;0.4.24&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;🔧修复哔哩哔哩flv流403的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-23&quot;&gt;0.4.23&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.07.17&lt;&#x2F;li&gt;
+&lt;li&gt;🔧preprocessor增加开播时返回主播名字和开播地址 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复当获取流失败后会触发获取流频繁的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化设置大delay会出现漏录的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化在config中读取值的代码写法 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧增加对yt-dlp的lazy_playlist功能支持 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复format为mp4时无法时间分段的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复bilibili导致进程卡死问题(get_play_info) &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复afreecaTV导致进程卡死问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复快手导致进程卡死问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧去除 quickjs 依赖。相对应的修改了 Readme 和 Douyu &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧Bililive 兼容 `APEX分区。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧Kuaishou 新增 协议切换 和 CDN 优选。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修正快手 HLS 流原画 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt; &lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复biliup-rs的参数绑定&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;hguandl&quot;&gt;@hguandl&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加由于地区限制导致无法下载指定区域直播间的提示。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加对biliup-rs的支持(杜比音效、Hi-Res、转载、充电) &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡bili_web上传插件新增简介@功能 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;zzc10086&quot;&gt;@zzc10086&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加抖音弹幕录制支持 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-22&quot;&gt;0.4.22&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.06.29&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化虎牙错误提示和抖音代码与错误提示。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化获取直播流失败时增加等待重试。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复ffmpeg时长分段时弹幕文件不会跟着分段的问题、修复防止重复请求流的功能工作异常的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修正CHANGELOG更新日志、修正README.MD。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧弹幕报错记录增加文件名部分，方便排查BUG。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧yaml、toml配置文件注释修正，格式修正。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡「BETA」增加未上传完录像时同一主播重新开播是否立刻开始录制功能。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡「BETA」增加cn01的fmp4流获取真原画流功能。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-21&quot;&gt;0.4.21&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.06.11&lt;&#x2F;li&gt;
+&lt;li&gt;🔧抖音增加获取错误时的提示并优化纯数字房间号的代码。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复虎牙与抖音关闭连接导致进程终止问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧同步yaml配置文件的更新到toml中。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Kataick&quot;&gt;@Kataick&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧NICO标题获取从BS4改为正则，开播后仍然重复请求的BUG的修复。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧添加quickjs依赖。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增NICO录播。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加NICO用户配置文件模板。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加Twitch的去广告开关（解决广告分段问题）&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加Twitch弹幕录播、修复斗鱼、虎牙的弹幕录制BUG并增加报错提示，修改了XML文件的删除部分，修改了部分代码的协程的调用，优化断流时频繁重复请求。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-20&quot;&gt;0.4.20&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.05.25&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复抖音可能导致进程卡死问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KkakaMann&quot;&gt;@KkakaMann&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧改正部分下载器的日志等级，避免刷屏。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧尝试修复斗鱼下载失败的问题，同时禁用主线路。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修正快手日志提示，尝试规避风控。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修正Windows下自动过滤删除文件由于占用权限问题，导致整体卡住的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-19&quot;&gt;0.4.19&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.05.11&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复新版本urllib3.connectionpool下xrange报错的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;zclkkk&quot;&gt;@zclkkk&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复新版本urllib3 2下method_whitelist报错的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;Weidows&quot;&gt;@Weidows&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-18&quot;&gt;0.4.18&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.04.21&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复录制B站直播，自动上传标题里面的title为下播前的最后一个标题的bug（正确的应该是开播之后的第一个标题）。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧streamlink下载稳定与内存占用优化。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复多余弹幕文件自动过滤失效的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧增加B站fmp4流的等待时间，因为有些主播开播到推流时间较慢。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;zclkkk&quot;&gt;@zclkkk&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡B站直播优选CDN支持同时添加多个节点。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增B站自定义fmp4流获取不到时，重新获取一遍flv直播流的API。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增对快手平台的支持。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-17&quot;&gt;0.4.17&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.24&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复不填B站自定义API就无法开始录制的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-16-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.16 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.23&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复B站自定义API不生效的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复部分config示例的错误。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-15&quot;&gt;0.4.15&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.21&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本关于b站下载部分的优化相关的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化YouTube下载相关参数。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-14&quot;&gt;0.4.14&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.19&lt;&#x2F;li&gt;
+&lt;li&gt;🔧回滚@xxxxuanran关于b站下载部分的优化。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-13-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.13 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.19&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化部分下载逻辑，并将封面下载功能移动到download.py中，方便以后适配更多平台的直播间封面下载。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复配置文件错误。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化streamlink下载参数。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增跳过斗鱼scdn，并增加了斗鱼与虎牙最新的CDN的支持。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增指定YouTube视频下载时间范围区间的功能。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-12&quot;&gt;0.4.12&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.17&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复优选CDN与直播流不生效的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化streamlink下载参数。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧完善依赖列表,将最低的yt-dlp版本要求升级到2023.3.3，解决2022年版本已无法解析YouTube视频的问题。并且将streamlink最低要求版本升级到5.3.0，提升hls流录制稳定性。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-11&quot;&gt;0.4.11&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.07&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本的封面上传问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-10-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.10 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.07&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本的封面上传问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化上传过滤文件规则。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡修改判断逻辑，支持cn-gotcha01 flv流的自选域名。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加YouTube转载视频自动获取视频封面并用作投稿封面的功能。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-9-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.9 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.06&lt;&#x2F;li&gt;
+&lt;li&gt;🔧biliup-rs上传器自动过滤xml文件，避免上传xml弹幕文件导致整个投稿转码失败的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复自动获取封面不生效的问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-8&quot;&gt;0.4.8&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.03.04&lt;&#x2F;li&gt;
+&lt;li&gt;🔧在最后处理文件的时候，自动删除多余的xml弹幕文件，只保留有同样文件名视频的弹幕xml文件&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化ffmpeg录制hls流的参数&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增streamlink+ffmpeg混合下载器选项&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增B站直播hls_fmp4流的获取（目前只有streamlink+ffmpeg混合模式才能稳定下载）&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上两条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-7&quot;&gt;0.4.7&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.28&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复0.4.5的BUG并添加缺失的依赖&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-5-warning-warning-you-zhong-da-wen-ti-qing-wu-shi-yong-gai-ban-ben&quot;&gt;0.4.5 ⚠️⚠️有重大问题，请勿使用该版本。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.28&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增斗鱼，虎牙，B站的弹幕录制功能，默认关闭，需要在config文件中开启，只支持FFMPEG（目前）&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt; （感谢：&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;THMonster&#x2F;danmaku&quot;&gt;THMonster&#x2F;danmaku&lt;&#x2F;a&gt; ）&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复了BILIBILI录制中OV05节点的BUG&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️由于为Config新增了弹幕录制的设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;li&gt;🔧优化代码&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;ForgQi&quot;&gt;@ForgQi&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-4-warning-warning-ben-ci-xiu-gai-liao-confignei-bu-fen-can-shu-de-ming-cheng-qing-xu-yao-shi-yong-de-yong-hu-can-kao-zui-xin-de-configshi-li-xiu-gai&quot;&gt;0.4.4 ⚠️⚠️本次修改了config内部分参数的名称，请需要使用的用户参考最新的config示例修改&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.20&lt;&#x2F;li&gt;
+&lt;li&gt;💡统一了Config中关键词替换的关键词。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️⚠️请注意修改file_name与title和Description中关键词替换的部分。目前全部统一为streamer，title和url了。&lt;&#x2F;li&gt;
+&lt;li&gt;💡新增cn-gotcha01和ov-gotcha05自选ip&#x2F;节点的设置。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本由于新增的哔哩哔哩直播自定义下载CDN导致报错的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复过多请求开播API导致IP被限制访问的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;ForgQi&quot;&gt;@ForgQi&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-3&quot;&gt;0.4.3&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.15&lt;&#x2F;li&gt;
+&lt;li&gt;💡为YouTube视频下载增加指定音视频编码的设置。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本由于新增的哔哩哔哩直播自定义下载CDN导致报错的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-2-warning-warning-ci-ban-ben-cun-zai-zhong-da-bug-dao-zhi-hen-duo-qing-kuang-xia-wu-fa-lu-zhi-bzhan-zhi-bo-qing-wu-shi-yong&quot;&gt;0.4.2 ⚠️⚠️此版本存在重大BUG，导致很多情况下无法录制B站直播，请勿使用。&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.15&lt;&#x2F;li&gt;
+&lt;li&gt;💡为YouTube视频下载增加指定封装格式，最大纵向分辨率，最大单视频大小的设置。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复上一版本由于新增的哔哩哔哩登录Cookie导致报错的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复Twitch的Clips无法下载的问题。 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧为上一版本的B站Fallback机制启用开关。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-1&quot;&gt;0.4.1&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.13&lt;&#x2F;li&gt;
+&lt;li&gt;💡增加Preprocessor功能，支持开始录制时执行指定Shell指令 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡为上传标题与简介增加streamers变量 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上两条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复访问acfun过于频繁导致ip被拉黑之后报错卡住的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复嵌入示例中延后发布时间的错误 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;setvenlele&quot;&gt;@stevenlele&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复twitch_cookie配置不生效问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;v2wy&quot;&gt;@v2wy&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧尝试为B站直播录制启用Fallback机制，当指定CDN反复无法下载之后，自动尝试另外的CDN &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧增加Cookie登录B站功能，可用于下载付费直播与大航海专属直播 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-4-0&quot;&gt;0.4.0&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.10&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️修改cookie在配置文件中的位置 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复斗鱼直播间被关闭一直报错的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;v2wy&quot;&gt;@v2wy&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修改probe_version参数，增加两个常用的网页上传地址 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;FairyWorld&quot;&gt;@FairyWorld&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-3-12&quot;&gt;0.3.12&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.05&lt;&#x2F;li&gt;
+&lt;li&gt;🔧为readme文档添加关于主要支持录制的直播平台的介绍以及删掉关于上传CDN描述中已经失效的节点 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复ffmpeg录制参数缺失.part后缀，导致录制出来的文件都没有.part后缀的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复了ffmpeg录制情况下，按大小分段录制时，分段之后上一段的.part后缀不会被去掉的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧完善config示例，增加postprocessor可参考用法的描述 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️上一条由于为Config新增了一些设置，如需使用相关功能请参考最新的config示例添加缺失的部分。&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-3-11&quot;&gt;0.3.11&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.02&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复config.yaml示例中filename_prefix配置格式 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;FairyWorld&quot;&gt;@FairyWorld&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧添加config.toml示例中缺失的关于downloader的设置 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修改postprocessor，避免出现指令有问题导致反复从头开始执行任务的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧去掉自动替换文件名中空格为_字符的功能，避免和录播完毕自动改名冲突 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧修复由于上一版的修改导致stream-gears录制文件名重复出现分段覆盖的问题&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-3-10-warning-warning-ci-ban-ben-cun-zai-stream-gearslu-zhi-wen-jian-ming-zhong-fu-dao-zhi-fu-gai-shang-yi-duan-fen-duan-de-wen-ti-qing-wu-shi-yong&quot;&gt;0.3.10 ⚠️⚠️此版本存在stream-gears录制文件名重复导致覆盖上一段分段的问题，请勿使用&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.02.01&lt;&#x2F;li&gt;
+&lt;li&gt;💡添加全局与单个主播自定义录播文件命名设置 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;⚠️新增与主播自定义录播文件命名设置的两个参数，如需使用此功能，请老版本用户参考config的示例添加。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡启用了文件名过滤特殊字符的功能，避免文件名中出现特殊字符，导致ffmpeg无法录制的问题。&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;haha114514&quot;&gt;@haha114514&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;0-3-9&quot;&gt;0.3.9&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;更新时间：2023.01.31&lt;&#x2F;li&gt;
+&lt;li&gt;💡添加一个虎牙的CDN线路 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;ForgQi&quot;&gt;@ForgQi&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;🔧虎牙无法正确获取房间标题的问题 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;luckycat0426&quot;&gt;@luckycat0426&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡哔哩哔哩直播流协议.可选 stream（Flv）、hls &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡哔哩哔哩直播优选CDN &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡哔哩哔哩直播强制原画（仅限HLS流的 cn-gotcha01 CDN） &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡自定义哔哩哔哩直播API &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;xxxxuanran&quot;&gt;@xxxxuanran&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;💡Twitch自定义用户Cookie，作用是可以不让广告嵌入到视频流中 &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;KNaiFen&quot;&gt;@KNaiFen&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+</content>
+        
+    </entry>
+</feed>

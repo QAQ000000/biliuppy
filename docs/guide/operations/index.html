@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-regular.woff2" type="font/woff2" crossorigin>
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-700.woff2"  type="font/woff2" crossorigin>
+
+
+<link rel="stylesheet" href="https://qaq000000.github.io/biliuppy/main.css">
+
+
+
+  
+  
+    
+  
+
+  
+  
+    
+    
+  
+  
+  
+    
+  
+  
+  
+  
+    
+  
+  
+  
+
+
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+
+
+	
+
+
+	
+
+<title>日常运维 | Biliup</title>
+<meta name="description" content="状态检查、手动上传、日志、历史、备份和故障处理。">
+<link rel="canonical" href="https://qaq000000.github.io/biliuppy/docs/guide/operations/">
+
+
+  <meta name="twitter:card" content="summary_large_image">
+  
+    <meta name="twitter:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+  <meta name="twitter:title" content="日常运维">
+  <meta name="twitter:description" content="状态检查、手动上传、日志、历史、备份和故障处理。">
+  <meta name="twitter:site" content="@">
+  <meta name="twitter:creator" content="@">
+  
+  <meta property="og:title" content="日常运维">
+  <meta property="og:description" content="状态检查、手动上传、日志、历史、备份和故障处理。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://qaq000000.github.io/biliuppy/docs/guide/operations/">
+
+  
+    <meta property="og:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+
+  <meta property="og:updated_time" content="2026-08-09T08:00:00+00:00">
+  <meta property="og:site_name" content="日常运维">
+
+  
+
+  
+
+  
+  <meta property="article:publisher" content="https://www.facebook.com/">
+  <meta property="article:author" content="https://www.facebook.com/">
+  <meta property="og:locale" content="zh_CN">
+
+
+
+
+
+  
+
+
+
+
+
+<script type="application/ld+json">
+  {
+    "@context": "http://schema.org",
+    "@type": "BreadcrumbList",
+    
+      
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          {
+            "@type": "ListItem",
+            "position":  1 ,
+            "name": "Home",
+            "item": "https://qaq000000.github.io/biliuppy/"
+          },
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  2 ,
+            "name": "Docs",
+            "item": "https://qaq000000.github.io/biliuppy/docs/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  3 ,
+            "name": "Guide",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  4 ,
+            "name": "Operations",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/operations/"
+          },
+        
+      
+    
+  }
+</script>
+
+
+
+
+
+
+  <meta name="theme-color" content="#fff">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://qaq000000.github.io/biliuppy/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="https://qaq000000.github.io/biliuppy/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://qaq000000.github.io/biliuppy/favicon-16x16.png">
+  
+    <link rel="manifest" href="https://qaq000000.github.io/biliuppy/site.webmanifest" crossorigin>
+  
+
+
+  
+
+</head>
+
+  
+
+<body class="docs single">
+  
+  
+  
+  
+<div class="header-bar fixed-top"></div>
+<header class="navbar fixed-top navbar-expand-md navbar-light">
+	<div class="container">
+		<input class="menu-btn order-0" type="checkbox" id="menu-btn">
+		<label class="menu-icon d-md-none" for="menu-btn"><span class="navicon"></span></label>
+		<a class="navbar-brand order-1 order-md-0 me-auto" href="https://qaq000000.github.io/biliuppy">Biliup</a>
+		<button id="mode" class="btn btn-link order-2 order-md-4" type="button" aria-label="Toggle mode">
+			<span class="toggle-dark"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span>
+			<span class="toggle-light"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span>
+		</button>
+		<ul class="navbar-nav fork-me order-3 order-md-5">
+			
+				
+					<li class="nav-item">
+						<a class="nav-link" href="https://github.com/QAQ000000/biliuppy"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-github"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg><span class="ms-2 visually-hidden">GitHub</span></a>
+					</li>
+				
+			
+		</ul>
+		<div class="collapse navbar-collapse order-4 order-md-1">
+			<ul class="navbar-nav main-nav me-auto order-5 order-md-2">
+				
+					
+				
+				
+				
+					
+						<li class="nav-item docs active">
+							<a class="nav-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">文档</a>
+						</li>
+					
+				
+			</ul>
+			<div class="break order-6 d-md-none"></div>
+			
+				<form class="navbar-form flex-grow-1 order-7 order-md-3">
+					<input id="userinput" class="form-control is-search" type="search" placeholder="Search docs..."
+						aria-label="Search docs..." autocomplete="off">
+					<div id="suggestions" class="shadow bg-white rounded"></div>
+				</form>
+			
+		</div>
+	</div>
+</header>
+
+
+
+  
+<div class="wrap container" role="document">
+  <div class="content">
+    <div class="row flex-xl-nowrap">
+	  
+<div class="col-lg-5 col-xl-4 docs-sidebar">
+	<nav class="docs-links" aria-label="Main navigation">
+			
+			
+			
+			
+					
+					
+					
+							<h3>开始使用</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">项目说明</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/">快速开始</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>使用指南</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">部署与升级</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/changelog/">更新日志</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">配置说明</a></li>
+							                           
+									<li><a class="docs-link active" href="https://qaq000000.github.io/biliuppy/docs/guide/operations/">日常运维</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>帮助</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/help/faq/">常见问题</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>参与贡献</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/">How to Contribute</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">Code of Conduct</a></li>
+							
+					</ul>
+					
+					
+			
+	</nav>
+</div>
+
+	  
+  
+  <nav class="docs-toc d-none d-xl-block col-xl-3" aria-label="Secondary navigation">
+  	<div class="page-links">
+  			<h3>On this page</h3>
+  			<nav id="TableOfContents">
+  					<ul>
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#fu-wu-shi-li">服务实例</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#ren-wu-zhuang-tai">任务状态</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#shou-dong-shang-chuan-he-xian-lu-qie-huan">手动上传和线路切换</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#ri-zhi-guan-li">日志管理</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#zhi-bo-li-shi">直播历史</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#bei-fen">备份</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/operations/#gu-zhang-chu-li-shun-xu">故障处理顺序</a></li>
+  							
+  							
+  					</ul>
+  			</nav>
+  	</div>
+  </nav>
+  
+
+      <main class="docs-content col-lg-11 col-xl-9">
+        <h1>日常运维</h1>
+        <p class="lead">保持录制与投稿服务长期稳定运行。</p>
+        <h2 id="fu-wu-shi-li">服务实例</h2>
+<p>同一 <code>BILIUP_HOME</code> 只能运行一个 <code>biliup server</code> 进程。不要配置多个 Uvicorn/Gunicorn worker，也不要让多套 systemd 服务共用同一 HOME，否则会重复检测、录制和投稿。</p>
+<p>服务会使用 <code>$BILIUP_HOME/.biliup.lock</code> 阻止第二个实例启动。锁文件会长期存在，是否被占用由操作系统文件锁决定，不要通过删除锁文件强制启动第二个实例。</p>
+<p>Linux 生产环境可以使用单个 systemd 服务。以下路径、用户和端口应按实际部署修改：</p>
+<pre data-lang="ini" style="background-color:#2b303b;color:#c0c5ce;" class="language-ini "><code class="language-ini" data-lang="ini"><span style="color:#b48ead;">[Unit]
+</span><span style="color:#bf616a;">Description</span><span>=biliuppy recording service
+</span><span style="color:#bf616a;">After</span><span>=network-online.target
+</span><span style="color:#bf616a;">Wants</span><span>=network-online.target
+</span><span>
+</span><span style="color:#b48ead;">[Service]
+</span><span style="color:#bf616a;">Type</span><span>=simple
+</span><span style="color:#bf616a;">User</span><span>=biliup
+</span><span style="color:#bf616a;">Group</span><span>=biliup
+</span><span style="color:#bf616a;">WorkingDirectory</span><span>=/opt/biliuppy
+</span><span style="color:#bf616a;">Environment</span><span>=BILIUP_HOME=/var/lib/biliuppy
+</span><span style="color:#bf616a;">ExecStart</span><span>=/usr/bin/xvfb-run -a -s </span><span style="color:#a3be8c;">&quot;-screen 0 1920x1080x24&quot; </span><span>/opt/biliuppy/.venv/bin/biliup server --host </span><span style="color:#d08770;">0.0.0.0 </span><span>--port </span><span style="color:#d08770;">19159 </span><span>--no-access-log
+</span><span style="color:#bf616a;">Restart</span><span>=on-failure
+</span><span style="color:#bf616a;">RestartSec</span><span>=</span><span style="color:#d08770;">5
+</span><span style="color:#bf616a;">TimeoutStopSec</span><span>=</span><span style="color:#d08770;">60
+</span><span style="color:#bf616a;">KillMode</span><span>=control-group
+</span><span style="color:#bf616a;">StandardOutput</span><span>=journal
+</span><span style="color:#bf616a;">StandardError</span><span>=journal
+</span><span style="color:#bf616a;">SyslogIdentifier</span><span>=biliuppy
+</span><span>
+</span><span style="color:#b48ead;">[Install]
+</span><span style="color:#bf616a;">WantedBy</span><span>=multi-user.target
+</span></code></pre>
+<p>保存为 <code>/etc/systemd/system/biliuppy.service</code> 后运行：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>sudo systemctl daemon-reload
+</span><span>sudo systemctl enable --now biliuppy
+</span><span>sudo systemctl status biliuppy
+</span><span>journalctl -u biliuppy -f
+</span></code></pre>
+<p>浏览器高速上传器 <code>bili_browser</code> 使用 Playwright 的可见浏览器模式，以便使用创作中心的新版分片上传协议。Linux 服务器不需要安装桌面环境，但需要安装虚拟显示和浏览器（使用运行服务的同一个用户）：</p>
+<p>Windows 首次安装 Chromium：</p>
+<pre data-lang="powershell" style="background-color:#2b303b;color:#c0c5ce;" class="language-powershell "><code class="language-powershell" data-lang="powershell"><span>uv run playwright install chromium
+</span></code></pre>
+<p>Linux 安装 Chromium 和虚拟显示：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>sudo apt install -y xauth xvfb
+</span><span>uv sync
+</span><span>uv run playwright install --with-deps chromium
+</span></code></pre>
+<p>直接从终端启动时，原来的 <code>uv run biliup server ...</code> 也必须包在 <code>xvfb-run</code> 中：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>xvfb-run -a -s &quot;-screen 0 1920x1080x24&quot; \
+</span><span>  uv run biliup server --host 0.0.0.0 --port 19159
+</span></code></pre>
+<p>使用宝塔面板、Supervisor 或其他进程守护工具时，同样应把完整的 <code>xvfb-run</code> 命令填入启动命令，不能只在安装时运行一次 Xvfb。systemd 应使用本页示例中以 <code>/usr/bin/xvfb-run</code> 开头的 <code>ExecStart</code>，修改后执行 <code>systemctl daemon-reload</code> 并重启服务。</p>
+<p>如果日志出现 <code>RuntimeError: Browser upload requires a display</code>，说明当前 biliuppy 进程既没有 <code>DISPLAY</code>，也没有 <code>WAYLAND_DISPLAY</code>。不要只执行 <code>export DISPLAY=:99</code>；除非该显示编号上确实有正在运行的 X Server，否则 Chromium 仍无法启动。应停止原进程并通过上面的 <code>xvfb-run</code> 命令重新启动。</p>
+<p>必须用实际运行 biliuppy 服务的系统账号执行 Playwright 安装，否则 systemd 或进程守护工具启动后可能找不到 Chromium。没有选择 <code>bili_browser</code> 的任务不会启动浏览器。Docker 镜像已经包含 Xvfb、Chromium，并预留 1 GB <code>/dev/shm</code>。同一 B 站账号的浏览器任务会串行执行，避免多个上传会话触发 CDN <code>400 InvalidArgument</code>。</p>
+<p>浏览器模式的完整链路是：Playwright 上传全部分 P，程序捕获每个分 P 的 <code>filename</code> 和 <code>biz_id/cid</code>，按选择顺序构造 <code>videos[]</code>，再使用当前浏览器 Cookie 调用 Python Web 投稿 API 填写并提交稿件。只有 API 返回明确拒绝时才回退到页面提交。API 超时、连接中断或没有返回 <code>aid/bvid</code> 时属于“结果未知”，系统不会自动再次投稿；应先在创作中心确认是否已经生成稿件。</p>
+<p>创作中心偶尔出现的“批量操作”可选浮层会被自动取消。不要通过 F12 删除浮层 DOM，这会改变页面状态并使自动化选择器失效。</p>
+<p>systemd 默认按宿主机 journald 策略保存 stdout/stderr。可在 <code>/etc/systemd/journald.conf</code> 中设置 <code>SystemMaxUse</code>、<code>RuntimeMaxUse</code> 或 <code>MaxRetentionSec</code>，修改后重启 <code>systemd-journald</code>。这些限制作用于整个 journal，不是单个 biliuppy 服务。</p>
+<h2 id="ren-wu-zhuang-tai">任务状态</h2>
+<p>常见录制状态：</p>
+<table><thead><tr><th>状态</th><th>含义</th></tr></thead><tbody>
+<tr><td><code>Pending</code> / <code>Checking</code></td><td>等待或正在检查直播状态</td></tr>
+<tr><td><code>Idle</code></td><td>当前未开播</td></tr>
+<tr><td><code>Waiting</code></td><td>已触发录制，等待资源</td></tr>
+<tr><td><code>Downloading</code></td><td>FFmpeg 正在录制</td></tr>
+<tr><td><code>Recovering</code></td><td>录制流中断，正在刷新直播状态和流地址</td></tr>
+<tr><td><code>ConfirmingOffline</code></td><td>已收到明确下播结果，仍处于下播确认宽限期</td></tr>
+<tr><td><code>Degraded</code></td><td>平台检测暂不可用，或连续录制失败后正在熔断冷却</td></tr>
+<tr><td><code>Paused</code></td><td>用户暂停</td></tr>
+<tr><td><code>Error</code></td><td>检测、录制或处理发生错误</td></tr>
+</tbody></table>
+<p>投稿状态单独显示。上传失败时录像保留在下载目录，可在投稿管理中手动重新上传。</p>
+<p><code>delay</code> 是录制中断后的下播确认宽限期，默认 60 秒。确认期间会进行至少 3 次明确下播检测；恢复开播会刷新流地址并继续同一场录制，超时、限流、接口异常等 <code>UNKNOWN</code> 结果不会计为下播。<code>upload_delay</code> 才是确认下播后、开始自动投稿前的等待时间。</p>
+<p>FFmpeg 存活但录像文件在 <code>recorder_stall_timeout</code> 秒内没有增长时，也会进入恢复流程。连续失败使用指数退避；达到 <code>recorder_retry_limit</code> 后进入至少 5 分钟的熔断冷却。熔断期间不会把仍在直播的场次送去投稿。</p>
+<p><code>min_free_disk_gb</code> 控制下载目录所在磁盘必须保留的空间，默认 5 GB。空间不足时不会启动新录制；录制过程中低于阈值时会停止 FFmpeg、保留已有录像并显示 <code>Degraded</code>。设为 <code>0</code> 可关闭保护。</p>
+<h2 id="shou-dong-shang-chuan-he-xian-lu-qie-huan">手动上传和线路切换</h2>
+<ol>
+<li>在全局设置或投稿模板中修改 <code>lines</code>、<code>threads</code>。</li>
+<li>保存配置。</li>
+<li>在投稿管理中重新选择录像并上传。</li>
+</ol>
+<p>新任务使用保存后的配置，正在上传的任务继续使用启动时的配置。<code>lines</code> 和 <code>threads</code> 只控制 <code>bili_web</code> 的 UPOS 上传；<code>bili_browser</code> 使用创作中心浏览器协议，这两个参数不会改变其线路或速度。上传日志会记录协议、线路、分片数量、进度、平均速度和投稿结果。</p>
+<p>选择文件和投稿模板后，WebUI 会在真正创建任务前显示投稿预览，包括展开变量后的标题、简介、直播间信息、元数据来源及分 P 列表。元数据优先从直播历史读取；未关联历史的录像会尝试从主播和录像文件名恢复；仍无法识别时使用文件名、修改时间等文件属性。多 P 按用户选择顺序上传和提交，不按文件名或完成时间重新排序。</p>
+<p>手动投稿最多选择 100 个文件，<code>threads</code> 范围为 1～8。活动任务总数由 <code>manual_upload_queue_limit</code> 控制；相同账号、文件和参数的活动任务会复用原任务 ID，避免重复点击造成重复投稿。</p>
+<p>最近 100 条手动上传任务状态保存在 SQLite 中，服务重启后仍可查询。重启时尚未完成的任务会标记为 <code>Cancelled</code>，系统不会自动重复投稿。任务显示“结果未知”或在最终提交阶段异常时，也应先在创作中心确认稿件状态，再决定是否重新上传。</p>
+<p>自动投稿成功后，默认删除操作会等待 B 站审核状态确认。审核通过后删除录像和同名 XML；审核失败、查询异常或 24 小时内无法确认时保留源文件。待审核任务保存在 SQLite 中，服务重启后会继续检查。</p>
+<h2 id="ri-zhi-guan-li">日志管理</h2>
+<p>WebUI 的实时日志分为程序、录制和上传类别。日志文件位于 <code>BILIUP_LOG_DIR</code>，默认为 <code>$BILIUP_HOME/logs/biliup.log</code>。</p>
+<ul>
+<li><code>log_file_max_size_mb</code> 控制单个日志文件上限。</li>
+<li>达到上限后轮转，保留最近 5 个备份。</li>
+<li>“清理日志”会清空当前日志并删除轮转备份。</li>
+<li>Cookie、访问令牌和上传签名会自动脱敏。</li>
+</ul>
+<p>清理日志不可恢复。需要排查故障时应先下载或备份日志。</p>
+<p>生产环境有三条相互独立的日志链路：</p>
+<ul>
+<li>应用日志写入 <code>biliup.log</code>，由 <code>log_file_max_size_mb</code> 和 5 个备份控制。</li>
+<li>Uvicorn access log 默认关闭；使用 <code>--access-log</code> 启用后写入 stdout，不进入 <code>biliup.log</code>。</li>
+<li>进程 stdout/stderr 由运行环境管理：Docker Compose 使用 <code>local</code> 驱动并保留最多 3 个 10 MB 文件，systemd 使用 journald。应用内的日志大小设置不会限制这部分日志。</li>
+</ul>
+<h2 id="zhi-bo-li-shi">直播历史</h2>
+<p>直播历史从 SQLite 分页读取，不扫描全部录像目录。<code>history_max_records</code> 控制保留数量，超限时移除最旧记录。</p>
+<p>“清理历史”只删除以下数据库记录：</p>
+<ul>
+<li>直播场次</li>
+<li>历史记录关联的文件条目</li>
+</ul>
+<p>磁盘上的录像文件不会被删除。录像文件删除由投稿后的后处理或人工操作控制。</p>
+<h2 id="bei-fen">备份</h2>
+<p>完整备份应包括：</p>
+<pre data-lang="text" style="background-color:#2b303b;color:#c0c5ce;" class="language-text "><code class="language-text" data-lang="text"><span>data.sqlite3
+</span><span>账号 JSON 文件
+</span><span>downloads/
+</span><span>config/
+</span></code></pre>
+<p>备份 SQLite 前先停止服务，或者使用 SQLite 在线备份工具，避免直接复制正在写入的数据库文件。</p>
+<p>恢复时保持目录结构不变，并使用相同的 <code>BILIUP_HOME</code> 或路径环境变量启动。Alembic 会在启动时继续执行必要迁移。</p>
+<h2 id="gu-zhang-chu-li-shun-xu">故障处理顺序</h2>
+<ol>
+<li>请求 <code>/healthz</code>，确认服务进程可访问。</li>
+<li>查看任务平台中的录制与投稿状态。</li>
+<li>在实时日志中选择对应类别。</li>
+<li>检查 FFmpeg 是否在 <code>PATH</code> 中、磁盘空间是否充足。</li>
+<li>上传问题先检查账号有效性、线路和并发数。</li>
+<li>保留数据库和录像，再重启服务验证；不要先删除数据。</li>
+</ol>
+<p>开发环境可以运行：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>uv run pytest -q
+</span><span>npm run lint
+</span><span>npm run build
+</span></code></pre>
+
+        
+        
+<div class="docs-navigation d-flex justify-content-between">
+  
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+            
+              
+              <a href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;getting-started&#x2F;quick-start&#x2F;">
+                <div class="card my-1">
+                  <div class="card-body py-2">
+                    &larr; 快速开始
+                  </div>
+                </div>
+              </a>
+            
+            
+            
+          
+        
+      
+    
+  
+
+  
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+      
+      
+        
+      
+    
+      
+      
+        
+          
+          
+          <a class="ms-auto" href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;help&#x2F;faq&#x2F;">
+            <div class="card my-1">
+              <div class="card-body py-2">
+                常见问题 &rarr;
+              </div>
+            </div>
+          </a>
+          
+          
+          
+        
+      
+    
+      
+      
+        
+      
+    
+  
+</div>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+
+  
+    
+<footer class="footer text-muted">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-8 order-last order-lg-first">
+				<ul class="list-inline">
+					
+						<li class="list-inline-item">Powered by <a href="https://www.getzola.org/">Zola</a> and <a href="https://github.com/aaranxu/adidoks">AdiDoks</a></li>
+					
+				</ul>
+			</div>
+			<div class="col-lg-8 order-first order-lg-last text-lg-end">
+				<ul class="list-inline">
+					
+						
+							<li class="list-inline-item"><a href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">行为准则</a></li>
+						
+					
+				</ul>
+			</div>
+		</div>
+	</div>
+</footer>
+
+  
+
+  
+<script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/main.js" defer></script>
+
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/plugins/elasticlunr.min.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/search_index.en.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/search.js" defer></script>
+
+  
+</body>
+</html>

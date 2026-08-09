@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-regular.woff2" type="font/woff2" crossorigin>
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-700.woff2"  type="font/woff2" crossorigin>
+
+
+<link rel="stylesheet" href="https://qaq000000.github.io/biliuppy/main.css">
+
+
+
+  
+  
+    
+  
+
+  
+  
+    
+    
+  
+  
+  
+    
+  
+  
+  
+  
+    
+  
+  
+  
+
+
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+
+
+	
+
+
+	
+
+<title>配置说明 | Biliup</title>
+<meta name="description" content="全局设置、主播覆写、投稿参数和路径环境变量。">
+<link rel="canonical" href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">
+
+
+  <meta name="twitter:card" content="summary_large_image">
+  
+    <meta name="twitter:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+  <meta name="twitter:title" content="配置说明">
+  <meta name="twitter:description" content="全局设置、主播覆写、投稿参数和路径环境变量。">
+  <meta name="twitter:site" content="@">
+  <meta name="twitter:creator" content="@">
+  
+  <meta property="og:title" content="配置说明">
+  <meta property="og:description" content="全局设置、主播覆写、投稿参数和路径环境变量。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">
+
+  
+    <meta property="og:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+
+  <meta property="og:updated_time" content="2026-08-09T08:00:00+00:00">
+  <meta property="og:site_name" content="配置说明">
+
+  
+
+  
+
+  
+  <meta property="article:publisher" content="https://www.facebook.com/">
+  <meta property="article:author" content="https://www.facebook.com/">
+  <meta property="og:locale" content="zh_CN">
+
+
+
+
+
+  
+
+
+
+
+
+<script type="application/ld+json">
+  {
+    "@context": "http://schema.org",
+    "@type": "BreadcrumbList",
+    
+      
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          {
+            "@type": "ListItem",
+            "position":  1 ,
+            "name": "Home",
+            "item": "https://qaq000000.github.io/biliuppy/"
+          },
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  2 ,
+            "name": "Docs",
+            "item": "https://qaq000000.github.io/biliuppy/docs/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  3 ,
+            "name": "Guide",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  4 ,
+            "name": "Configuration",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/configuration/"
+          },
+        
+      
+    
+  }
+</script>
+
+
+
+
+
+
+  <meta name="theme-color" content="#fff">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://qaq000000.github.io/biliuppy/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="https://qaq000000.github.io/biliuppy/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://qaq000000.github.io/biliuppy/favicon-16x16.png">
+  
+    <link rel="manifest" href="https://qaq000000.github.io/biliuppy/site.webmanifest" crossorigin>
+  
+
+
+  
+
+</head>
+
+  
+
+<body class="docs single">
+  
+  
+  
+  
+<div class="header-bar fixed-top"></div>
+<header class="navbar fixed-top navbar-expand-md navbar-light">
+	<div class="container">
+		<input class="menu-btn order-0" type="checkbox" id="menu-btn">
+		<label class="menu-icon d-md-none" for="menu-btn"><span class="navicon"></span></label>
+		<a class="navbar-brand order-1 order-md-0 me-auto" href="https://qaq000000.github.io/biliuppy">Biliup</a>
+		<button id="mode" class="btn btn-link order-2 order-md-4" type="button" aria-label="Toggle mode">
+			<span class="toggle-dark"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span>
+			<span class="toggle-light"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span>
+		</button>
+		<ul class="navbar-nav fork-me order-3 order-md-5">
+			
+				
+					<li class="nav-item">
+						<a class="nav-link" href="https://github.com/QAQ000000/biliuppy"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-github"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg><span class="ms-2 visually-hidden">GitHub</span></a>
+					</li>
+				
+			
+		</ul>
+		<div class="collapse navbar-collapse order-4 order-md-1">
+			<ul class="navbar-nav main-nav me-auto order-5 order-md-2">
+				
+					
+				
+				
+				
+					
+						<li class="nav-item docs active">
+							<a class="nav-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">文档</a>
+						</li>
+					
+				
+			</ul>
+			<div class="break order-6 d-md-none"></div>
+			
+				<form class="navbar-form flex-grow-1 order-7 order-md-3">
+					<input id="userinput" class="form-control is-search" type="search" placeholder="Search docs..."
+						aria-label="Search docs..." autocomplete="off">
+					<div id="suggestions" class="shadow bg-white rounded"></div>
+				</form>
+			
+		</div>
+	</div>
+</header>
+
+
+
+  
+<div class="wrap container" role="document">
+  <div class="content">
+    <div class="row flex-xl-nowrap">
+	  
+<div class="col-lg-5 col-xl-4 docs-sidebar">
+	<nav class="docs-links" aria-label="Main navigation">
+			
+			
+			
+			
+					
+					
+					
+							<h3>开始使用</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">项目说明</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/">快速开始</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>使用指南</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">部署与升级</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/changelog/">更新日志</a></li>
+							                           
+									<li><a class="docs-link active" href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">配置说明</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/operations/">日常运维</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>帮助</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/help/faq/">常见问题</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>参与贡献</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/">How to Contribute</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">Code of Conduct</a></li>
+							
+					</ul>
+					
+					
+			
+	</nav>
+</div>
+
+	  
+  
+  <nav class="docs-toc d-none d-xl-block col-xl-3" aria-label="Secondary navigation">
+  	<div class="page-links">
+  			<h3>On this page</h3>
+  			<nav id="TableOfContents">
+  					<ul>
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#pei-zhi-lai-yuan">配置来源</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#lu-zhi-she-zhi">录制设置</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#tou-gao-she-zhi">投稿设置</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#ri-zhi-yu-li-shi">日志与历史</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#zhu-bo-fu-xie">主播覆写</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/#lu-jing-he-fu-wu-huan-jing-bian-liang">路径和服务环境变量</a></li>
+  							
+  							
+  					</ul>
+  			</nav>
+  	</div>
+  </nav>
+  
+
+      <main class="docs-content col-lg-11 col-xl-9">
+        <h1>配置说明</h1>
+        <p class="lead">理解 WebUI、SQLite 和 YAML/TOML 配置之间的关系。</p>
+        <h2 id="pei-zhi-lai-yuan">配置来源</h2>
+<p>WebUI 保存的全局设置和任务位于 SQLite。YAML/TOML 主要用于首次导入和部署默认值：数据库已有主播任务时，不会被配置文件覆盖。</p>
+<p>验证配置文件：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>uv run biliup validate-config ./public/config.yaml
+</span></code></pre>
+<p>示例文件：</p>
+<ul>
+<li><code>public/config.yaml</code></li>
+<li><code>public/config.toml</code></li>
+</ul>
+<p>平台专用的扩展字段会被保留。全局设置修改后对新启动的检测、录制和投稿任务生效；已经运行中的任务不会中途切换参数。</p>
+<h2 id="lu-zhi-she-zhi">录制设置</h2>
+<table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>downloader</code></td><td>当前统一使用 FFmpeg 录制</td></tr>
+<tr><td><code>segment_time</code></td><td>单个分片最长时长，格式 <code>HH:MM:SS</code></td></tr>
+<tr><td><code>file_size</code></td><td>单个分片大小上限，单位 Byte</td></tr>
+<tr><td><code>filtering_threshold</code></td><td>小于此值的分片视为无效并删除，单位 MiB</td></tr>
+<tr><td><code>filename_prefix</code></td><td>文件名模板，支持 <code>{streamer}</code>、<code>{title}</code> 和时间格式</td></tr>
+<tr><td><code>delay</code></td><td>下播确认窗口，默认 60 秒；窗口内恢复直播会刷新流地址并归入同一场录像</td></tr>
+<tr><td><code>upload_delay</code></td><td>确认下播后、开始投稿前的额外等待时间，单位秒</td></tr>
+<tr><td><code>checker_concurrency</code></td><td>最大同时直播状态检测请求数</td></tr>
+<tr><td><code>recorder_stall_timeout</code></td><td>FFmpeg 存活但录像文件持续不增长时，等待多少秒后触发恢复；<code>0</code> 表示关闭</td></tr>
+<tr><td><code>recorder_retry_limit</code></td><td>短时间连续录制失败达到多少次后进入熔断冷却</td></tr>
+<tr><td><code>recorder_retry_backoff</code></td><td>连续录制失败的指数退避起始秒数，单次最大 60 秒</td></tr>
+<tr><td><code>pool1_size</code></td><td>最大同时录制任务数</td></tr>
+</tbody></table>
+<p>同时设置 <code>segment_time</code> 和 <code>file_size</code> 时，先达到限制的一项结束当前分片。</p>
+<h2 id="tou-gao-she-zhi">投稿设置</h2>
+<table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>uploader</code></td><td>上传器；<code>bili_web</code> 使用 Python UPOS API，<code>bili_browser</code> 使用 Playwright 创作中心协议</td></tr>
+<tr><td><code>submit_api</code></td><td>最终投稿接口，例如 <code>web</code>、<code>app</code>、<code>b-cut-android</code>；<code>bili_browser</code> 的混合链路固定使用 <code>web</code></td></tr>
+<tr><td><code>lines</code></td><td><code>bili_web</code> 的 UPOS 上传线路，<code>AUTO</code> 自动选择</td></tr>
+<tr><td><code>threads</code></td><td><code>bili_web</code> 单个文件的并发分片上传数，范围 1～8</td></tr>
+<tr><td><code>pool2_size</code></td><td>最大同时投稿任务数</td></tr>
+<tr><td><code>manual_upload_queue_limit</code></td><td>手动投稿中运行和排队的任务总数上限，默认 8</td></tr>
+<tr><td><code>submit_interval</code></td><td>同一账号两次最终投稿的最短间隔，默认 60 秒，不影响分P上传</td></tr>
+</tbody></table>
+<p>常用线路包括 <code>bda2</code>、<code>bldsa</code>、<code>qn</code>、<code>tx</code> 和 <code>txa</code>。线路效果与运营商和所在地区有关，应以实际上传日志为准。并发数不是越大越好，通常从 <code>3</code> 开始测试，部分线路会限制并发数。这些设置只作用于 <code>bili_web</code>；<code>bili_browser</code> 的线路和并发由创作中心协议决定。</p>
+<p>手动重新上传会读取提交时的最新模板和全局设置。修改线路不会改变已经运行中的上传任务。</p>
+<p>同一账号、文件和投稿参数的手动任务仍在活动时，重复请求会返回原任务，不会再次投稿。达到 <code>manual_upload_queue_limit</code> 后接口返回 <code>429</code>；任务结束后可以重新提交。</p>
+<p><code>bili_web</code> 已上传的分 P 会在 SQLite 中缓存 3 天。最终投稿失败时，使用同一账号重新上传相同文件可复用缓存；投稿成功后缓存立即清除。<code>bili_browser</code> 当前会重新上传所选文件，不复用该分 P 缓存。</p>
+<h2 id="ri-zhi-yu-li-shi">日志与历史</h2>
+<table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>log_file_max_size_mb</code></td><td>单个 <code>biliup.log</code> 大小上限，轮转后保留 5 个备份</td></tr>
+<tr><td><code>history_max_records</code></td><td>直播历史数据库记录数量上限</td></tr>
+</tbody></table>
+<p>历史超出上限时删除最旧数据库记录，不删除磁盘录像。WebUI 中的手动清理同样不会删除录像。</p>
+<h2 id="zhu-bo-fu-xie">主播覆写</h2>
+<p>每个主播可以在“配置覆写”中覆盖部分全局设置，例如分段、过滤阈值、B 站画质、CDN 和弹幕录制。优先级为：</p>
+<pre data-lang="text" style="background-color:#2b303b;color:#c0c5ce;" class="language-text "><code class="language-text" data-lang="text"><span>主播覆写 &gt; WebUI 全局设置/数据库配置 &gt; 程序默认值
+</span></code></pre>
+<p>覆写只影响该主播，不改变其他录制任务。</p>
+<h2 id="lu-jing-he-fu-wu-huan-jing-bian-liang">路径和服务环境变量</h2>
+<p>常用变量：</p>
+<pre data-lang="text" style="background-color:#2b303b;color:#c0c5ce;" class="language-text "><code class="language-text" data-lang="text"><span>BILIUP_HOME
+</span><span>BILIUP_DATABASE
+</span><span>BILIUP_DATA_DIR
+</span><span>BILIUP_CONFIG_DIR
+</span><span>BILIUP_DOWNLOAD_DIR
+</span><span>BILIUP_LOG_DIR
+</span><span>BILIUP_FRONTEND_DIR
+</span><span>BILIUP_HOST
+</span><span>BILIUP_PORT
+</span><span>BILIUP_CORS_ORIGIN
+</span><span>BILIUP_AUTH_ENABLED
+</span><span>BILIUP_LOG_LEVEL
+</span></code></pre>
+<p>所有相对目录都从 <code>BILIUP_HOME</code> 解析。完整示例见项目根目录 <code>.env.example</code>。</p>
+
+        
+        
+<div class="docs-navigation d-flex justify-content-between">
+  
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+            
+              
+              <a href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;getting-started&#x2F;quick-start&#x2F;">
+                <div class="card my-1">
+                  <div class="card-body py-2">
+                    &larr; 快速开始
+                  </div>
+                </div>
+              </a>
+            
+            
+            
+          
+        
+      
+    
+  
+
+  
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+      
+      
+        
+      
+    
+      
+      
+        
+          
+          
+          <a class="ms-auto" href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;help&#x2F;faq&#x2F;">
+            <div class="card my-1">
+              <div class="card-body py-2">
+                常见问题 &rarr;
+              </div>
+            </div>
+          </a>
+          
+          
+          
+        
+      
+    
+      
+      
+        
+      
+    
+  
+</div>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+
+  
+    
+<footer class="footer text-muted">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-8 order-last order-lg-first">
+				<ul class="list-inline">
+					
+						<li class="list-inline-item">Powered by <a href="https://www.getzola.org/">Zola</a> and <a href="https://github.com/aaranxu/adidoks">AdiDoks</a></li>
+					
+				</ul>
+			</div>
+			<div class="col-lg-8 order-first order-lg-last text-lg-end">
+				<ul class="list-inline">
+					
+						
+							<li class="list-inline-item"><a href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">行为准则</a></li>
+						
+					
+				</ul>
+			</div>
+		</div>
+	</div>
+</footer>
+
+  
+
+  
+<script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/main.js" defer></script>
+
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/plugins/elasticlunr.min.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/search_index.en.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/search.js" defer></script>
+
+  
+</body>
+</html>
