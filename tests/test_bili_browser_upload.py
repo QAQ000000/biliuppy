@@ -157,6 +157,7 @@ def test_upload_finished_requires_completed_transfer() -> None:
     assert not bili_browser.upload_finished("已经上传 99.9%")
     assert not bili_browser.upload_finished("P1 上传完成 P2 上传中 25% P3 等待上传")
     assert not bili_browser.upload_finished("P1 100% P2 等待上传")
+    assert bili_browser.upload_finished("上传中 已经上传 100%")
     assert bili_browser.upload_finished("已经上传 100%")
     assert bili_browser.upload_finished("视频上传完成")
 
@@ -233,6 +234,60 @@ def test_browser_parts_require_every_selected_file(tmp_path: Path) -> None:
     assert bili_browser.ordered_browser_parts(files, captured) is None
 
 
+def test_api_upload_ready_requires_complete_parts_and_transfer(tmp_path: Path) -> None:
+    files = [tmp_path / "first.flv", tmp_path / "second.flv"]
+    complete = {
+        "first.flv": [{"filename": "first", "cid": 1, "title": "first", "desc": ""}],
+        "second.flv": [{"filename": "second", "cid": 2, "title": "second", "desc": ""}],
+    }
+
+    assert bili_browser.browser_api_ready(files, complete, "上传中 100%")
+    assert not bili_browser.browser_api_ready(files, complete, "上传中 99%")
+    assert not bili_browser.browser_api_ready(files, complete, "P1 100% P2 等待上传")
+    assert not bili_browser.browser_api_ready(files, {"first.flv": complete["first.flv"]}, "100%")
+
+
+def test_wait_for_form_recovers_closed_browser_after_complete_capture(tmp_path: Path, monkeypatch) -> None:
+    class TargetClosedError(Exception):
+        pass
+
+    class BodyLocator:
+        def inner_text(self, *, timeout: int) -> str:
+            assert timeout == 10_000
+            return "上传中 100%"
+
+    class ClosingPage:
+        def __init__(self) -> None:
+            self.body = BodyLocator()
+
+        def locator(self, selector: str) -> BodyLocator:
+            assert selector == "body"
+            return self.body
+
+        def get_by_text(self, _value, **_kwargs) -> FakeLocator:
+            return FakeLocator(visible=False)
+
+        def wait_for_timeout(self, _milliseconds: int) -> None:
+            captured["sample.flv"] = [
+                {"filename": "remote", "cid": 1, "title": "sample", "desc": ""}
+            ]
+
+    files = [tmp_path / "sample.flv"]
+    captured: dict[str, list[dict]] = {}
+    calls = 0
+    uploader = bili_browser.BiliBrowser(principal="demo", data={})
+
+    def dismiss(_page) -> None:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise TargetClosedError("Target page, context or browser has been closed")
+
+    monkeypatch.setattr(uploader, "_dismiss_known_overlays", dismiss)
+
+    assert uploader._wait_for_form(ClosingPage(), files, captured) is None
+
+
 def test_api_submission_uses_browser_cookies_and_template_fields(tmp_path: Path, monkeypatch) -> None:
     cookie_path = tmp_path / "cookies.json"
     write_cookie_file(cookie_path)
@@ -286,6 +341,53 @@ def test_api_submission_uses_browser_cookies_and_template_fields(tmp_path: Path,
     assert video.tid == 95
     assert video.tag == "tag-a,tag-b"
     assert video.no_reprint == 1
+
+
+def test_api_submission_falls_back_to_stored_cookies_when_browser_closed(tmp_path: Path, monkeypatch) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    write_cookie_file(cookie_path)
+    calls: dict = {}
+
+    class TargetClosedError(Exception):
+        pass
+
+    class ClosedContext:
+        def cookies(self):
+            raise TargetClosedError("Target page, context or browser has been closed")
+
+    class FakeBiliBili:
+        def __init__(self, _video, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def login_by_cookies(self, payload):
+            calls["cookies"] = payload
+
+        def submit(self, _submit_api):
+            return {"code": 0, "data": {"aid": 123}}
+
+    monkeypatch.setattr("biliup.integrations.uploaders.bili_web.BiliBili", FakeBiliBili)
+    uploader = bili_browser.BiliBrowser(
+        principal="demo",
+        data={"format_title": "title"},
+        user_cookie=str(cookie_path),
+        copyright=1,
+    )
+    payload, _cookies = bili_browser.load_browser_cookies(cookie_path)
+
+    result = uploader._submit_via_api(
+        ClosedContext(),
+        payload,
+        [{"filename": "remote", "cid": 456, "title": "part", "desc": ""}],
+    )
+
+    assert result["data"]["aid"] == 123
+    assert calls["cookies"]["cookie_info"]["cookies"][0]["name"] == "SESSDATA"
 
 
 @pytest.mark.parametrize(

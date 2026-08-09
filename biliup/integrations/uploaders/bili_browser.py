@@ -109,9 +109,12 @@ def category_names(typelist: list[dict[str, Any]], tid: int) -> tuple[str, str]:
 
 
 def upload_finished(body: str) -> bool:
-    if re.search(r"上传中|等待上传", body):
+    if "等待上传" in body:
         return False
-    return "上传完成" in body or bool(re.search(r"(?<!\d)100(?:\.0+)?%", body))
+    if "上传完成" in body:
+        return True
+    percentages = [float(value) for value in re.findall(r"(?<!\d)(\d+(?:\.\d+)?)%", body)]
+    return bool(percentages) and all(value >= 100 for value in percentages)
 
 
 def browser_uploaded_part(response: Any) -> tuple[str, dict[str, Any]] | None:
@@ -159,6 +162,25 @@ def ordered_browser_parts(
         ordered.append(part)
         positions[path.name] = position + 1
     return ordered
+
+
+def browser_api_ready(
+    files: list[Path],
+    captured: dict[str, list[dict[str, Any]]],
+    body: str,
+) -> bool:
+    return upload_finished(body) and ordered_browser_parts(files, captured) is not None
+
+
+def target_closed_error(error: BaseException) -> bool:
+    current: BaseException | None = error
+    while current is not None:
+        if current.__class__.__name__ == "TargetClosedError":
+            return True
+        if "target page, context or browser has been closed" in str(current).lower():
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def ensure_headed_environment() -> None:
@@ -338,7 +360,7 @@ class BiliBrowser(UploadBase):
                 sum(path.stat().st_size for path in files),
             )
             page.locator(VIDEO_INPUT).set_input_files([str(path) for path in files])
-            submit_button = self._wait_for_form(page, files)
+            submit_button = self._wait_for_form(page, files, uploaded_parts)
             api_parts = ordered_browser_parts(files, uploaded_parts)
             if api_parts is not None:
                 logger.info("浏览器上传完成，切换 API 提交 parts=%d", len(api_parts))
@@ -346,7 +368,10 @@ class BiliBrowser(UploadBase):
                     submitted = True
                     result = self._submit_via_api(context, payload, api_parts)
                 except UploadRejectedError as exc:
+                    submitted = False
                     logger.warning("API 投稿被明确拒绝，退回浏览器页面提交: %s", exc)
+                    if submit_button is None:
+                        submit_button = self._wait_for_form(page, files)
                 else:
                     data = result.get("data") or {}
                     if not data.get("aid") and not data.get("bvid"):
@@ -392,13 +417,18 @@ class BiliBrowser(UploadBase):
             self._capture_failure(context, "error")
             if submitted:
                 raise UploadOutcomeUnknownError("Browser closed or failed after the submit click") from exc
+            if target_closed_error(exc):
+                raise TransientUploadError("Browser closed before submission; retry is safe") from exc
             raise RuntimeError(f"Browser upload failed: {exc}") from exc
         finally:
             if context is not None:
                 try:
                     save_browser_cookies(self.user_cookie, payload, context.cookies())
-                except Exception:
-                    logger.exception("保存浏览器 Cookie 失败")
+                except Exception as exc:
+                    if target_closed_error(exc):
+                        logger.info("浏览器已关闭，跳过 Cookie 刷新")
+                    else:
+                        logger.exception("保存浏览器 Cookie 失败")
                 try:
                     context.close()
                 except Exception:
@@ -417,9 +447,16 @@ class BiliBrowser(UploadBase):
     ) -> dict[str, Any]:
         from biliup.integrations.uploaders.bili_web import BiliBili, Data
 
-        current_cookies = context.cookies()
         api_cookie_payload = dict(cookie_payload)
-        api_cookie_payload["cookie_info"] = {"cookies": current_cookies}
+        try:
+            current_cookies = context.cookies()
+        except Exception as exc:
+            if not target_closed_error(exc):
+                raise
+            logger.warning("浏览器已关闭，API 投稿使用账号文件 Cookie")
+        else:
+            if current_cookies:
+                api_cookie_payload["cookie_info"] = {"cookies": current_cookies}
         video = Data(
             copyright=self.copyright,
             source=self.copyright_source if self.copyright == 2 else "",
@@ -445,19 +482,38 @@ class BiliBrowser(UploadBase):
             self._check_cancelled()
             return bili.submit("web")
 
-    def _wait_for_form(self, page: Any, files: list[Path]) -> Any:
+    def _wait_for_form(
+        self,
+        page: Any,
+        files: list[Path],
+        uploaded_parts: dict[str, list[dict[str, Any]]] | None = None,
+    ) -> Any | None:
         deadline = time.monotonic() + 12 * 60 * 60
         pending_snapshot_at = time.monotonic() + 15
         pending_snapshot_saved = False
         last_progress = ""
+        last_body = ""
         while time.monotonic() < deadline:
-            self._check_cancelled()
-            self._dismiss_known_overlays(page)
-            body = page.locator("body").inner_text(timeout=10_000)
+            try:
+                self._check_cancelled()
+                self._dismiss_known_overlays(page)
+                body = page.locator("body").inner_text(timeout=10_000)
+            except Exception as exc:
+                if (
+                    uploaded_parts is not None
+                    and target_closed_error(exc)
+                    and browser_api_ready(files, uploaded_parts, last_body)
+                ):
+                    logger.warning("浏览器在上传完成后关闭，继续使用 API 投稿 parts=%d", len(files))
+                    return None
+                raise
+            last_body = body
             progress = " ".join(dict.fromkeys(re.findall(r"\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*[KM]B/s", body)))
             if progress and progress != last_progress:
                 logger.info("浏览器上传进度 %s", progress)
                 last_progress = progress
+            if uploaded_parts is not None and browser_api_ready(files, uploaded_parts, body):
+                return None
             if not last_progress and not pending_snapshot_saved and time.monotonic() >= pending_snapshot_at:
                 self._capture_page(page, "pending")
                 pending_snapshot_saved = True
@@ -687,14 +743,25 @@ class BiliBrowser(UploadBase):
         raise UploadOutcomeUnknownError("Bilibili did not return a confirmed submission result")
 
     def _capture_failure(self, context: Any, suffix: str) -> None:
-        if context is None or not context.pages:
+        if context is None:
             return
-        self._capture_page(context.pages[-1], suffix)
+        try:
+            pages = context.pages
+        except Exception as exc:
+            if target_closed_error(exc):
+                logger.info("浏览器已关闭，跳过失败截图 state=%s", suffix)
+                return
+            raise
+        if pages:
+            self._capture_page(pages[-1], suffix)
 
     def _capture_page(self, page: Any, suffix: str) -> None:
         target = self.capture_dir / f"browser-upload-{int(time.time())}-{suffix}.png"
         try:
             page.screenshot(path=str(target), full_page=False)
             logger.warning("浏览器上传页面截图 state=%s path=%s", suffix, target)
-        except Exception:
-            logger.exception("保存浏览器上传失败截图失败")
+        except Exception as exc:
+            if target_closed_error(exc):
+                logger.info("浏览器已关闭，无法保存失败截图 state=%s", suffix)
+            else:
+                logger.exception("保存浏览器上传失败截图失败")
