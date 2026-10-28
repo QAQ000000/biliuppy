@@ -452,6 +452,139 @@ def test_qrcode_login_is_stored_under_app_data(tmp_path: Path, monkeypatch) -> N
     assert json.loads(target.read_text(encoding="utf-8"))["token_info"]["access_token"] == "test-token"
 
 
+def test_refresh_user_cookie_replaces_the_configured_file_after_verification(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "data" / "123.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        json.dumps(
+            {
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": "expired-session"},
+                        {"name": "DedeUserID", "value": "123"},
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async def fake_login(_payload):
+        return {
+            "code": 0,
+            "data": {
+                "token_info": {"mid": 123, "access_token": "new-token"},
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": "fresh-session"},
+                        {"name": "DedeUserID", "value": "123"},
+                    ]
+                },
+            },
+        }
+
+    async def fake_my_info(_payload):
+        return {"code": 0, "data": {"mid": 123, "name": "test-user"}}
+
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.login_by_qrcode", fake_login)
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.my_info_from_payload", fake_my_info)
+
+    with make_client(tmp_path) as client:
+        user = client.post("/v1/users", json={"key": "bilibili-cookies", "value": "data/123.json"}).json()
+        response = client.post(
+            f"/v1/users/{user['id']}/refresh-cookie",
+            json={"data": {"auth_code": "test"}},
+        )
+        users = client.get("/v1/users").json()
+
+    assert response.status_code == 200
+    assert response.json() == {"filename": str(target.resolve()), "mid": "123"}
+    assert len(users) == 1
+    refreshed = json.loads(target.read_text(encoding="utf-8"))
+    cookie_values = {cookie["name"]: cookie["value"] for cookie in refreshed["cookie_info"]["cookies"]}
+    assert cookie_values == {"SESSDATA": "fresh-session", "DedeUserID": "123"}
+
+
+def test_refresh_user_cookie_rejects_a_different_bilibili_account(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "data" / "123.json"
+    target.parent.mkdir(parents=True)
+    original = json.dumps({"cookie_info": {"cookies": [{"name": "DedeUserID", "value": "123"}]}})
+    target.write_text(original, encoding="utf-8")
+
+    async def fake_login(_payload):
+        return {
+            "code": 0,
+            "data": {
+                "token_info": {"mid": 456},
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": "other-session"},
+                        {"name": "DedeUserID", "value": "456"},
+                    ]
+                },
+            },
+        }
+
+    async def unexpected_my_info(_payload):
+        raise AssertionError("account mismatch must be rejected before cookie verification")
+
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.login_by_qrcode", fake_login)
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.my_info_from_payload", unexpected_my_info)
+
+    with make_client(tmp_path) as client:
+        user = client.post("/v1/users", json={"key": "bilibili-cookies", "value": "data/123.json"}).json()
+        response = client.post(
+            f"/v1/users/{user['id']}/refresh-cookie",
+            json={"data": {"auth_code": "test"}},
+        )
+
+    assert response.status_code == 409
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_refresh_user_cookie_preserves_the_file_when_new_cookie_is_invalid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "data" / "123.json"
+    target.parent.mkdir(parents=True)
+    original = json.dumps({"cookie_info": {"cookies": [{"name": "DedeUserID", "value": "123"}]}})
+    target.write_text(original, encoding="utf-8")
+
+    async def fake_login(_payload):
+        return {
+            "code": 0,
+            "data": {
+                "token_info": {"mid": 123},
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": "new-session"},
+                        {"name": "DedeUserID", "value": "123"},
+                    ]
+                },
+            },
+        }
+
+    async def fake_my_info(_payload):
+        return {"code": -101, "message": "账号未登录"}
+
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.login_by_qrcode", fake_login)
+    monkeypatch.setattr("biliup.api.routers.users.bili_service.my_info_from_payload", fake_my_info)
+
+    with make_client(tmp_path) as client:
+        user = client.post("/v1/users", json={"key": "bilibili-cookies", "value": "data/123.json"}).json()
+        response = client.post(
+            f"/v1/users/{user['id']}/refresh-cookie",
+            json={"data": {"auth_code": "test"}},
+        )
+
+    assert response.status_code == 422
+    assert target.read_text(encoding="utf-8") == original
+
+
 def test_authentication_contract(tmp_path: Path) -> None:
     with make_client(tmp_path, auth=True) as client:
         assert client.get("/v1/users/biliup").status_code == 404

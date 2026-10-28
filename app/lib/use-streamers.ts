@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import useSWR from "swr";
 
 import {
@@ -51,7 +52,7 @@ export default function useStreamers() {
 }
 
 export function useBiliUsers() {
-  const {data, error, isLoading} = useSWR<User[]>("/v1/users", fetcher);
+  const {data, error, isLoading, mutate: mutateUsers} = useSWR<User[]>("/v1/users", fetcher);
   const profileKey = data
     ? ["bili-user-profiles", data.map(item => `${item.id}:${item.value}`).join("|")]
     : null;
@@ -59,15 +60,21 @@ export function useBiliUsers() {
     data: list = [],
     error: profileError,
     isLoading: profilesLoading,
+    mutate: mutateProfiles,
   } = useSWR<BiliUser[]>(profileKey, () => loadBiliUsers(data ?? []), {
     dedupingInterval: 5 * 60 * 1000,
     revalidateOnFocus: false,
   });
+  const refresh = useCallback(async () => {
+    await mutateUsers();
+    await mutateProfiles();
+  }, [mutateProfiles, mutateUsers]);
 
   return {
     isLoading: isLoading || profilesLoading,
     isError: error || profileError,
     biliUsers: list,
+    refresh,
   };
 }
 

@@ -34,7 +34,7 @@ User=biliup
 Group=biliup
 WorkingDirectory=/opt/biliuppy
 Environment=BILIUP_HOME=/var/lib/biliuppy
-ExecStart=/usr/bin/xvfb-run -a -s "-screen 0 1920x1080x24" /opt/biliuppy/.venv/bin/biliup server --host 0.0.0.0 --port 19159 --no-access-log
+ExecStart=/usr/bin/dbus-run-session -- /usr/bin/xvfb-run -a -s "-screen 0 1920x1080x24" /opt/biliuppy/.venv/bin/biliup server --host 0.0.0.0 --port 19159 --no-access-log
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=60
@@ -72,14 +72,14 @@ uv sync
 uv run playwright install --with-deps chromium
 ```
 
-直接从终端启动时，原来的 `uv run biliup server ...` 也必须包在 `xvfb-run` 中：
+直接从终端启动时，原来的 `uv run biliup server ...` 也必须包在稳定的 D-Bus 会话和 `xvfb-run` 中：
 
 ```shell
-xvfb-run -a -s "-screen 0 1920x1080x24" \
+dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" \
   uv run biliup server --host 0.0.0.0 --port 19159
 ```
 
-使用宝塔面板、Supervisor 或其他进程守护工具时，同样应把完整的 `xvfb-run` 命令填入启动命令，不能只在安装时运行一次 Xvfb。systemd 应使用本页示例中以 `/usr/bin/xvfb-run` 开头的 `ExecStart`，修改后执行 `systemctl daemon-reload` 并重启服务。
+使用宝塔面板、Supervisor 或其他进程守护工具时，同样应把完整的 `dbus-run-session -- xvfb-run` 命令填入启动命令，不能只在安装时运行一次 Xvfb。systemd 应使用本页示例中以 `/usr/bin/dbus-run-session -- /usr/bin/xvfb-run` 开头的 `ExecStart`，修改后执行 `systemctl daemon-reload` 并重启服务。Linux 无真实 GPU 时，浏览器上传器会强制使用软件合成，避免 Xvfb 下 GPU 进程初始化失败导致 Chrome 主进程退出。
 
 如果日志出现 `RuntimeError: Browser upload requires a display`，说明当前 biliuppy 进程既没有 `DISPLAY`，也没有 `WAYLAND_DISPLAY`。不要只执行 `export DISPLAY=:99`；除非该显示编号上确实有正在运行的 X Server，否则 Chromium 仍无法启动。应停止原进程并通过上面的 `xvfb-run` 命令重新启动。
 

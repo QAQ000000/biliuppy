@@ -1,12 +1,15 @@
 import asyncio
+import hashlib
 import json
 import os
 import sys
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from requests import ConnectionError as RequestsConnectionError
 from sqlalchemy import select
@@ -405,12 +408,24 @@ async def test_scheduler_clears_transient_upload_error_after_retry_success(tmp_p
     database.dispose()
 
 
+def test_bilibili_qrcode_poll_signature_uses_bilibili_field_order(monkeypatch) -> None:
+    monkeypatch.setattr(bili_service.time, "time", lambda: 1)
+
+    params = bili_service._signed_params(auth_code="dummy")
+    query = f"appkey={bili_service.TV_APP_KEY}&auth_code=dummy&local_id=0&ts=1"
+
+    assert list(params) == ["appkey", "auth_code", "local_id", "ts", "sign"]
+    assert urllib.parse.urlencode({key: value for key, value in params.items() if key != "sign"}) == query
+    assert params["sign"] == hashlib.md5(f"{query}{bili_service.TV_APP_SECRET}".encode()).hexdigest()
+
+
 async def test_bilibili_qrcode_polling_uses_async_client(monkeypatch) -> None:
     responses = [
         {"code": 86039, "message": "not scanned"},
+        {"code": 86090, "message": "scanned, not confirmed"},
         {"code": 0, "data": {"token_info": {"mid": 123}}},
     ]
-    calls: list[tuple[str, dict[str, Any]]] = []
+    calls: list[dict[str, Any]] = []
 
     class FakeResponse:
         def __init__(self, payload):
@@ -422,8 +437,8 @@ async def test_bilibili_qrcode_polling_uses_async_client(monkeypatch) -> None:
         def json(self):
             return self.payload
 
-    async def fake_post(url, *, data, timeout):
-        calls.append((url, data))
+    async def fake_post(url, *, data, timeout, headers=None):
+        calls.append({"url": url, "data": data, "timeout": timeout, "headers": headers})
         return FakeResponse(responses.pop(0))
 
     async def immediate_sleep(_delay):
@@ -435,10 +450,110 @@ async def test_bilibili_qrcode_polling_uses_async_client(monkeypatch) -> None:
     result = await bili_service.login_by_qrcode({"data": {"auth_code": "secret-code"}})
 
     assert result["data"]["token_info"]["mid"] == 123
-    assert len(calls) == 2
-    assert all(call[1]["auth_code"] == "secret-code" for call in calls)
-    assert all("sign" in call[1] for call in calls)
+    assert len(calls) == 3
+    assert all(call["data"]["auth_code"] == "secret-code" for call in calls)
+    assert all("sign" in call["data"] for call in calls)
+    assert all(call["timeout"] == 10 for call in calls)
+    assert all(
+        call["headers"] == bili_service.TV_QR_HEADERS
+        for call in calls
+    )
+    assert all(call["url"].endswith("/qrcode/poll") for call in calls)
     assert "secret-code" not in json.dumps(result)
+
+
+async def test_bilibili_qrcode_polling_rejects_business_error_immediately(monkeypatch, caplog) -> None:
+    calls = 0
+    auth_code = "do-not-log-this-auth-code"
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"code": -3, "message": "bad signature"}
+
+    async def fake_post(url, *, data, timeout, headers=None):
+        nonlocal calls
+        calls += 1
+        return FakeResponse()
+
+    async def immediate_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(bili_service.client, "post", fake_post)
+    monkeypatch.setattr(bili_service.asyncio, "sleep", immediate_sleep)
+
+    with caplog.at_level("WARNING", logger="biliup"):
+        with pytest.raises(RuntimeError, match="code=-3"):
+            await bili_service.login_by_qrcode({"data": {"auth_code": auth_code}})
+
+    assert calls == 1
+    assert "Bilibili QR poll rejected code=-3" in caplog.text
+    assert auth_code not in caplog.text
+
+
+async def test_bilibili_qrcode_polling_logs_status_without_auth_code(
+    monkeypatch, caplog
+) -> None:
+    auth_code = "do-not-log-this-auth-code"
+    request = httpx.Request(
+        "POST", "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll"
+    )
+    response = httpx.Response(412, request=request)
+
+    async def fake_post(url, *, data, timeout, headers=None):
+        return response
+
+    async def immediate_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(bili_service.client, "post", fake_post)
+    monkeypatch.setattr(bili_service.asyncio, "sleep", immediate_sleep)
+
+    with caplog.at_level("WARNING", logger="biliup"):
+        with pytest.raises(httpx.HTTPStatusError):
+            await bili_service.login_by_qrcode({"data": {"auth_code": auth_code}})
+
+    assert "Bilibili QR poll request failed status=412" in caplog.text
+    assert auth_code not in caplog.text
+
+
+async def test_bilibili_get_qrcode_sends_browser_headers(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"code": 0, "data": {"url": "https://example.invalid/qr"}}
+
+    async def fake_post(url, *, data, timeout, headers=None):
+        calls.append(
+            {
+                "url": url,
+                "data": data,
+                "timeout": timeout,
+                "headers": headers,
+            }
+        )
+        return FakeResponse()
+
+    monkeypatch.setattr(bili_service.client, "post", fake_post)
+
+    result = await bili_service.get_qrcode()
+
+    assert result["code"] == 0
+    assert len(calls) == 1
+    assert calls[0]["url"] == (
+        "https://passport.bilibili.com/x/passport-tv-login/qrcode/auth_code"
+    )
+    assert "sign" in calls[0]["data"]
+    assert calls[0]["headers"] == {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/63.0.3239.108",
+        "Referer": "https://www.bilibili.com/",
+    }
 
 
 async def test_background_jobs_keep_only_recent_terminal_entries() -> None:

@@ -5,10 +5,16 @@ import { Notification, Spin, Typography } from '@douyinfe/semi-ui'
 
 type QrcodeProps = {
   onSuccess: (e: string) => void
+  loginEndpoint?: string
 }
 
-const Qrcode: React.FC<QrcodeProps> = ({ onSuccess }) => {
+const Qrcode: React.FC<QrcodeProps> = ({ onSuccess, loginEndpoint = '/v1/login_by_qrcode' }) => {
   const [url, setUrl] = useState('')
+  const onSuccessRef = React.useRef(onSuccess)
+  useEffect(() => {
+    onSuccessRef.current = onSuccess
+  }, [onSuccess])
+
   useEffect(() => {
     // Create an instance.
     const controller = new AbortController()
@@ -20,8 +26,7 @@ const Qrcode: React.FC<QrcodeProps> = ({ onSuccess }) => {
       ; (async () => {
         let qrData = await fetcher('/v1/get_qrcode', undefined)
         setUrl(qrData['data']['url'])
-        console.log(qrData['data']['url'])
-        let res = await proxy('/v1/login_by_qrcode', {
+        let res = await proxy(loginEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -30,13 +35,22 @@ const Qrcode: React.FC<QrcodeProps> = ({ onSuccess }) => {
           signal: signal,
         })
         const data = await res.json()
-        onSuccess(data['filename'])
+        await onSuccessRef.current(data['filename'])
       })().catch(e => {
-        console.log(e)
-        setUrl(e.message)
+        if (signal.aborted || e?.name === 'AbortError') {
+          return
+        }
+        let message = e instanceof Error ? e.message : String(e)
+        try {
+          const parsed = JSON.parse(message)
+          message = parsed.detail ?? parsed.error ?? message
+        } catch {
+          // Keep the original message when it is not a JSON API error.
+        }
+        setUrl(message)
         Notification.error({
           title: 'QRcode',
-          content: <Typography.Paragraph style={{ maxWidth: 450 }}>{e.message}</Typography.Paragraph>,
+          content: <Typography.Paragraph style={{ maxWidth: 450 }}>{message}</Typography.Paragraph>,
           style: { width: 'min-content' },
         })
       })
@@ -44,7 +58,7 @@ const Qrcode: React.FC<QrcodeProps> = ({ onSuccess }) => {
     return () => {
       controller.abort('qrcode exit')
     }
-  }, [onSuccess])
+  }, [loginEndpoint])
   if (url === '') {
     return <Spin />
   }

@@ -39,8 +39,9 @@ type UserListProps = {
 const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
   const { trigger } = useSWRMutation('/v1/users', sendRequest)
   const { trigger: deleteUser } = useSWRMutation('/v1/users', requestDelete)
-  const { biliUsers: list } = useBiliUsers()
+  const { biliUsers: list, refresh: refreshBiliUsers } = useBiliUsers()
   const [modalVisible, setVisible] = useState(false)
+  const [refreshUser, setRefreshUser] = useState<User | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { width } = useWindowSize()
   const showDialog = () => {
@@ -62,6 +63,7 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
         key: 'bilibili-cookies',
         value: value
       })
+      await refreshBiliUsers()
       setVisible(false)
       Toast.success('创建成功')
     } catch (e: any) {
@@ -95,9 +97,15 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
   const handleAfterClose = () => {
     console.log('After Close callback executed')
   }
+  const handleRefreshSuccess = async (_filename: string) => {
+    await refreshBiliUsers()
+    setRefreshUser(null)
+    Toast.success('Cookie 已刷新')
+  }
   const updateList = async (id: number) => {
     try {
       await deleteUser(id)
+      await refreshBiliUsers()
       Toast.success('删除成功')
     } catch (e: any) {
       Notification.error({
@@ -164,6 +172,7 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
               abbr={item.name}
               label={item.name}
               value={item.value}
+              onRefresh={() => setRefreshUser(item)}
               onRemove={async () => await updateList(item.id)}
             />
           )
@@ -198,6 +207,26 @@ const UserList: React.FC<UserListProps> = ({ onCancel, visible }) => {
           </RadioGroup>
         </Row>
         <Row>{panel}</Row>
+      </Modal>
+
+      <Modal
+        title={`重新登录${refreshUser?.name ? `：${refreshUser.name}` : ''}`}
+        visible={refreshUser !== null}
+        footer={null}
+        onCancel={() => setRefreshUser(null)}
+        closeOnEsc
+        bodyStyle={{ minHeight: 220 }}
+      >
+        {refreshUser && (
+          <QRcode
+            key={refreshUser.id}
+            loginEndpoint={`/v1/users/${refreshUser.id}/refresh-cookie`}
+            onSuccess={handleRefreshSuccess}
+          />
+        )}
+        <Typography.Text type="tertiary">
+          使用要保留的同一 Bilibili 账号扫码；验证成功后会更新当前 Cookie 文件。
+        </Typography.Text>
       </Modal>
     </SideSheet>
   )

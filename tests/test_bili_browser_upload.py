@@ -164,6 +164,109 @@ def test_browser_cookie_round_trip_preserves_cookie_container(tmp_path: Path) ->
     assert [item["name"] for item in saved["cookie_info"]["cookies"]][-1] == "buvid3"
 
 
+def test_browser_cookie_snapshot_requires_non_empty_auth_values() -> None:
+    assert not bili_browser.has_required_browser_cookies([])
+    assert not bili_browser.has_required_browser_cookies(
+        [
+            {"name": "SESSDATA", "value": ""},
+            {"name": "DedeUserID", "value": "123"},
+        ]
+    )
+    assert not bili_browser.has_required_browser_cookies(
+        [{"name": "SESSDATA", "value": "session"}]
+    )
+    assert bili_browser.has_required_browser_cookies(
+        [
+            {"name": "SESSDATA", "value": "session"},
+            {"name": "DedeUserID", "value": "123"},
+        ]
+    )
+
+
+def test_browser_cookie_loader_rejects_empty_sessdata(tmp_path: Path) -> None:
+    path = tmp_path / "cookies.json"
+    path.write_text(
+        json.dumps(
+            {
+                "cookie_info": {
+                    "cookies": [
+                        {"name": "SESSDATA", "value": ""},
+                        {"name": "DedeUserID", "value": "123"},
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not contain SESSDATA"):
+        bili_browser.load_browser_cookies(path)
+
+
+def test_browser_cookies_are_not_overwritten_without_confirmed_submission(tmp_path: Path) -> None:
+    path = tmp_path / "cookies.json"
+    write_cookie_file(path)
+    original = path.read_text(encoding="utf-8")
+
+    saved = bili_browser.save_browser_cookies_after_success(
+        path,
+        {"cookie_info": {"cookies": []}},
+        [{"name": "buvid3", "value": "browser-cookie"}],
+        submission_confirmed=False,
+    )
+
+    assert not saved
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_browser_cookies_are_not_overwritten_with_incomplete_auth_snapshot(tmp_path: Path) -> None:
+    path = tmp_path / "cookies.json"
+    write_cookie_file(path)
+    original = path.read_text(encoding="utf-8")
+
+    saved = bili_browser.save_browser_cookies_after_success(
+        path,
+        {"cookie_info": {"cookies": []}},
+        [{"name": "DedeUserID", "value": "123"}],
+        submission_confirmed=True,
+    )
+
+    assert not saved
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_browser_cookies_are_saved_after_confirmed_submission(tmp_path: Path) -> None:
+    path = tmp_path / "cookies.json"
+    write_cookie_file(path)
+    refreshed = [
+        {"name": "SESSDATA", "value": "refreshed-session"},
+        {"name": "DedeUserID", "value": "123"},
+    ]
+
+    saved = bili_browser.save_browser_cookies_after_success(
+        path,
+        {"cookie_info": {"cookies": []}},
+        refreshed,
+        submission_confirmed=True,
+    )
+
+    assert saved
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["cookie_info"]["cookies"] == refreshed
+
+
+@pytest.mark.parametrize(
+    ("url", "is_login"),
+    [
+        ("https://passport.bilibili.com/login?gourl=%2Fplatform%2Fupload", True),
+        ("https://member.bilibili.com/platform/login", True),
+        ("https://member.bilibili.com/platform/upload/video/frame", False),
+    ],
+)
+def test_bilibili_login_redirect_detection(url: str, is_login: bool) -> None:
+    assert bili_browser.is_bilibili_login_url(url) is is_login
+
+
 def test_category_names_resolves_nested_tid() -> None:
     typelist = [{"name": "生活", "children": [{"id": 122, "name": "日常"}]}]
     assert bili_browser.category_names(typelist, 122) == ("生活", "日常")

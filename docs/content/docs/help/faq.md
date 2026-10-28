@@ -2,7 +2,7 @@
 title = "常见问题"
 description = "登录、录制、投稿、日志和升级问题。"
 date = 2026-08-02T08:00:00+00:00
-updated = 2026-08-09T08:00:00+00:00
+updated = 2026-10-26T08:00:00+00:00
 draft = false
 weight = 10
 sort_by = "weight"
@@ -22,7 +22,7 @@ top = false
 
 ## 如何确认账号是否有效？
 
-用户管理会读取 B 站账号资料并显示头像和昵称。显示“Cookie 已失效”时，应删除该账号并重新扫码登录。不要在日志、Issue 或聊天中发送账号 JSON、Cookie、访问令牌。
+用户管理会读取 B 站账号资料并显示头像和昵称。显示“Cookie 已失效”时，点击该账号旁的“重新登录”，使用同一个 B 站账号扫码；新 Cookie 验证通过后会写回原 Cookie 文件，不需要删除或重新添加账号。若扫码账号不匹配或验证失败，原文件不会被覆盖。不要在日志、Issue 或聊天中发送账号 JSON、Cookie、访问令牌。
 
 ## 上传失败怎么办？
 
@@ -60,11 +60,11 @@ top = false
 ```shell
 sudo apt install -y xauth xvfb
 uv run playwright install --with-deps chromium
-xvfb-run -a -s "-screen 0 1920x1080x24" \
+dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" \
   uv run biliup server --host 0.0.0.0 --port 19159
 ```
 
-Playwright Chromium 必须由实际运行服务的系统账号安装。使用 systemd、宝塔面板或 Supervisor 时，应把 `xvfb-run` 写入真正的启动命令并重启服务；只安装 Xvfb 或只设置 `DISPLAY=:99` 不会自动创建可用的显示服务。
+Playwright Chromium 必须由实际运行服务的系统账号安装。使用 systemd、宝塔面板或 Supervisor 时，应把 `dbus-run-session -- xvfb-run` 写入真正的启动命令并重启服务；只安装 Xvfb 或只设置 `DISPLAY=:99` 不会自动创建可用的显示服务。Linux 无真实 GPU 时，上传器会禁用 GPU 并使用软件合成。
 
 ## 多 P 会乱序或漏传吗？
 

@@ -430,7 +430,7 @@ class BiliBili:
 
     def myinfo(self, cookies):
         requests.utils.add_dict_to_cookiejar(self.__session.cookies, self.cookie_dict(cookies))
-        response = self.__session.get('http://api.bilibili.com/x/space/myinfo')
+        response = self.__session.get('http://api.bilibili.com/x/space/myinfo', timeout=10)
         return response.json()
 
     @staticmethod

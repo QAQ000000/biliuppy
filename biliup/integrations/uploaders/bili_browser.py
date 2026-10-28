@@ -76,7 +76,7 @@ def load_browser_cookies(path: str | Path) -> tuple[dict[str, Any], list[dict[st
         if same_site in {"Lax", "Strict", "None"}:
             cookie["sameSite"] = same_site
         cookies.append(cookie)
-    if not any(cookie["name"] == "SESSDATA" for cookie in cookies):
+    if not any(cookie["name"] == "SESSDATA" and cookie["value"] for cookie in cookies):
         raise ValueError("Bilibili cookie file does not contain SESSDATA")
     if not any(cookie["name"] == "DedeUserID" and cookie["value"] for cookie in cookies):
         raise ValueError("Browser upload requires DedeUserID in the Bilibili cookie file")
@@ -84,6 +84,8 @@ def load_browser_cookies(path: str | Path) -> tuple[dict[str, Any], list[dict[st
 
 
 def save_browser_cookies(path: str | Path, payload: dict[str, Any], cookies: list[dict[str, Any]]) -> None:
+    if not has_required_browser_cookies(cookies):
+        raise ValueError("Refusing to save browser cookies without required Bilibili authentication")
     target = Path(path)
     stored = []
     for cookie in cookies:
@@ -101,6 +103,38 @@ def save_browser_cookies(path: str | Path, payload: dict[str, Any], cookies: lis
         json.dump(payload, stream, ensure_ascii=False, indent=2)
         temporary = Path(stream.name)
     temporary.replace(target)
+
+
+def has_required_browser_cookies(cookies: list[dict[str, Any]]) -> bool:
+    """Return whether a Playwright cookie snapshot still has Bilibili auth."""
+    required = {"SESSDATA", "DedeUserID"}
+    present = {
+        str(cookie.get("name"))
+        for cookie in cookies
+        if isinstance(cookie, dict) and cookie.get("value")
+    }
+    return required.issubset(present)
+
+
+def is_bilibili_login_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.rstrip("/").lower()
+    return host == "passport.bilibili.com" or path.endswith("/login")
+
+
+def save_browser_cookies_after_success(
+    path: str | Path,
+    payload: dict[str, Any],
+    cookies: list[dict[str, Any]],
+    *,
+    submission_confirmed: bool,
+) -> bool:
+    """Persist refreshed cookies only after confirmed submission and auth validation."""
+    if not submission_confirmed or not has_required_browser_cookies(cookies):
+        return False
+    save_browser_cookies(path, payload, cookies)
+    return True
 
 
 def category_names(typelist: list[dict[str, Any]], tid: int) -> tuple[str, str]:
@@ -355,6 +389,7 @@ class BiliBrowser(UploadBase):
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self.capture_dir.mkdir(parents=True, exist_ok=True)
         submitted = False
+        persist_cookies = False
         context = None
         playwright = None
         try:
@@ -364,7 +399,11 @@ class BiliBrowser(UploadBase):
                 headless=False,
                 no_viewport=True,
                 locale="zh-CN",
-                args=["--start-maximized", "--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--start-maximized",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                ],
             )
             context.add_cookies(cookies)
             page = context.pages[0] if context.pages else context.new_page()
@@ -411,6 +450,8 @@ class BiliBrowser(UploadBase):
             page.on("response", capture_uploaded_part)
             page.on("response", capture_completed_upload)
             page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=90_000)
+            if is_bilibili_login_url(page.url):
+                raise ValueError("Bilibili browser session is not authenticated; refresh cookies")
             page.locator(VIDEO_INPUT).wait_for(state="attached", timeout=60_000)
             self._check_cancelled()
             logger.info(
@@ -441,6 +482,7 @@ class BiliBrowser(UploadBase):
                         data.get("aid"),
                         data.get("bvid"),
                     )
+                    persist_cookies = True
                     return result
             else:
                 logger.warning("浏览器未捕获完整分P信息，继续使用页面提交")
@@ -456,6 +498,7 @@ class BiliBrowser(UploadBase):
                 (result.get("data") or {}).get("aid"),
                 (result.get("data") or {}).get("bvid"),
             )
+            persist_cookies = True
             return result
         except UploadRejectedError:
             raise
@@ -482,7 +525,17 @@ class BiliBrowser(UploadBase):
         finally:
             if context is not None:
                 try:
-                    save_browser_cookies(self.user_cookie, payload, context.cookies())
+                    if persist_cookies:
+                        current_cookies = context.cookies()
+                        if not save_browser_cookies_after_success(
+                            self.user_cookie,
+                            payload,
+                            current_cookies,
+                            submission_confirmed=True,
+                        ):
+                            logger.warning("浏览器投稿成功后未返回完整登录 Cookie，跳过 Cookie 刷新")
+                    else:
+                        logger.debug("浏览器投稿未确认成功，跳过 Cookie 刷新")
                 except Exception as exc:
                     if target_closed_error(exc):
                         logger.info("浏览器已关闭，跳过 Cookie 刷新")
