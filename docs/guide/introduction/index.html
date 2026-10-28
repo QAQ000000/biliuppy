@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-regular.woff2" type="font/woff2" crossorigin>
+  <link rel="preload" as="font" href="https://qaq000000.github.io/biliuppy/fonts/vendor/jost/jost-v4-latin-700.woff2"  type="font/woff2" crossorigin>
+
+
+<link rel="stylesheet" href="https://qaq000000.github.io/biliuppy/main.css">
+
+
+
+  
+  
+    
+  
+
+  
+  
+    
+    
+  
+  
+  
+    
+  
+  
+  
+  
+    
+  
+  
+  
+
+
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+
+
+	
+
+
+	
+
+<title>部署与升级 | Biliup</title>
+<meta name="description" content="源码、Docker、数据目录和数据库迁移说明。">
+<link rel="canonical" href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">
+
+
+  <meta name="twitter:card" content="summary_large_image">
+  
+    <meta name="twitter:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+  <meta name="twitter:title" content="部署与升级">
+  <meta name="twitter:description" content="源码、Docker、数据目录和数据库迁移说明。">
+  <meta name="twitter:site" content="@">
+  <meta name="twitter:creator" content="@">
+  
+  <meta property="og:title" content="部署与升级">
+  <meta property="og:description" content="源码、Docker、数据目录和数据库迁移说明。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">
+
+  
+    <meta property="og:image" content="https://qaq000000.github.io/biliuppy/doks.png">
+  
+
+  <meta property="og:updated_time" content="2026-08-02T08:00:00+00:00">
+  <meta property="og:site_name" content="部署与升级">
+
+  
+
+  
+
+  
+  <meta property="article:publisher" content="https://www.facebook.com/">
+  <meta property="article:author" content="https://www.facebook.com/">
+  <meta property="og:locale" content="zh_CN">
+
+
+
+
+
+  
+
+
+
+
+
+<script type="application/ld+json">
+  {
+    "@context": "http://schema.org",
+    "@type": "BreadcrumbList",
+    
+      
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          {
+            "@type": "ListItem",
+            "position":  1 ,
+            "name": "Home",
+            "item": "https://qaq000000.github.io/biliuppy/"
+          },
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  2 ,
+            "name": "Docs",
+            "item": "https://qaq000000.github.io/biliuppy/docs/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  3 ,
+            "name": "Guide",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/"
+          },
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+          
+          
+          {
+            "@type": "ListItem",
+            "position":  4 ,
+            "name": "Introduction",
+            "item": "https://qaq000000.github.io/biliuppy/docs/guide/introduction/"
+          },
+        
+      
+    
+  }
+</script>
+
+
+
+
+
+
+  <meta name="theme-color" content="#fff">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://qaq000000.github.io/biliuppy/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="https://qaq000000.github.io/biliuppy/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://qaq000000.github.io/biliuppy/favicon-16x16.png">
+  
+    <link rel="manifest" href="https://qaq000000.github.io/biliuppy/site.webmanifest" crossorigin>
+  
+
+
+  
+
+</head>
+
+  
+
+<body class="docs single">
+  
+  
+  
+  
+<div class="header-bar fixed-top"></div>
+<header class="navbar fixed-top navbar-expand-md navbar-light">
+	<div class="container">
+		<input class="menu-btn order-0" type="checkbox" id="menu-btn">
+		<label class="menu-icon d-md-none" for="menu-btn"><span class="navicon"></span></label>
+		<a class="navbar-brand order-1 order-md-0 me-auto" href="https://qaq000000.github.io/biliuppy">Biliup</a>
+		<button id="mode" class="btn btn-link order-2 order-md-4" type="button" aria-label="Toggle mode">
+			<span class="toggle-dark"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-moon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span>
+			<span class="toggle-light"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span>
+		</button>
+		<ul class="navbar-nav fork-me order-3 order-md-5">
+			
+				
+					<li class="nav-item">
+						<a class="nav-link" href="https://github.com/QAQ000000/biliuppy"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-github"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg><span class="ms-2 visually-hidden">GitHub</span></a>
+					</li>
+				
+			
+		</ul>
+		<div class="collapse navbar-collapse order-4 order-md-1">
+			<ul class="navbar-nav main-nav me-auto order-5 order-md-2">
+				
+					
+				
+				
+				
+					
+						<li class="nav-item docs active">
+							<a class="nav-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">文档</a>
+						</li>
+					
+				
+			</ul>
+			<div class="break order-6 d-md-none"></div>
+			
+				<form class="navbar-form flex-grow-1 order-7 order-md-3">
+					<input id="userinput" class="form-control is-search" type="search" placeholder="Search docs..."
+						aria-label="Search docs..." autocomplete="off">
+					<div id="suggestions" class="shadow bg-white rounded"></div>
+				</form>
+			
+		</div>
+	</div>
+</header>
+
+
+
+  
+<div class="wrap container" role="document">
+  <div class="content">
+    <div class="row flex-xl-nowrap">
+	  
+<div class="col-lg-5 col-xl-4 docs-sidebar">
+	<nav class="docs-links" aria-label="Main navigation">
+			
+			
+			
+			
+					
+					
+					
+							<h3>开始使用</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/introduction/">项目说明</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/getting-started/quick-start/">快速开始</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>使用指南</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link active" href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/">部署与升级</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/changelog/">更新日志</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/configuration/">配置说明</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/guide/operations/">日常运维</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>帮助</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/help/faq/">常见问题</a></li>
+							
+					</ul>
+					
+					
+					
+					
+							<h3>参与贡献</h3>
+							<ul class="list-unstyled">
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/how-to-contribute/">How to Contribute</a></li>
+							                           
+									<li><a class="docs-link" href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">Code of Conduct</a></li>
+							
+					</ul>
+					
+					
+			
+	</nav>
+</div>
+
+	  
+  
+  <nav class="docs-toc d-none d-xl-block col-xl-3" aria-label="Secondary navigation">
+  	<div class="page-links">
+  			<h3>On this page</h3>
+  			<nav id="TableOfContents">
+  					<ul>
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/#bu-shu-fang-shi">部署方式</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/#shu-ju-mu-lu">数据目录</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/#shu-ju-ku-sheng-ji">数据库升级</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/#pei-zhi-dao-ru-jian-rong">配置导入兼容</a></li>
+  							
+  							
+  							<li><a href="https://qaq000000.github.io/biliuppy/docs/guide/introduction/#jian-kang-jian-cha">健康检查</a></li>
+  							
+  							
+  					</ul>
+  			</nav>
+  	</div>
+  </nav>
+  
+
+      <main class="docs-content col-lg-11 col-xl-9">
+        <h1>部署与升级</h1>
+        <p class="lead">部署 biliup Python Edition，并安全沿用已有数据库。</p>
+        <h2 id="bu-shu-fang-shi">部署方式</h2>
+<p>长期运行推荐 Docker Compose；开发和本机调试推荐源码启动。两种方式使用相同的 FastAPI 服务和 SQLite 数据结构。</p>
+<p>Docker：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>docker compose up -d --build
+</span></code></pre>
+<p>源码：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>uv sync --extra dev
+</span><span>npm ci
+</span><span>npm run build
+</span><span>uv run biliup server --host 0.0.0.0 --port 19159
+</span></code></pre>
+<p>生产环境不要使用 <code>--reload</code> 或 <code>--no-auth</code>。</p>
+<h2 id="shu-ju-mu-lu">数据目录</h2>
+<p>所有可变数据都从 <code>BILIUP_HOME</code> 派生：</p>
+<table><thead><tr><th>内容</th><th>默认路径</th><th>环境变量</th></tr></thead><tbody>
+<tr><td>SQLite 与账号文件</td><td><code>$BILIUP_HOME/data</code></td><td><code>BILIUP_DATA_DIR</code></td></tr>
+<tr><td>SQLite 数据库</td><td><code>$BILIUP_HOME/data/data.sqlite3</code></td><td><code>BILIUP_DATABASE</code></td></tr>
+<tr><td>配置目录</td><td><code>$BILIUP_HOME/config</code></td><td><code>BILIUP_CONFIG_DIR</code></td></tr>
+<tr><td>录像目录</td><td><code>$BILIUP_HOME/downloads</code></td><td><code>BILIUP_DOWNLOAD_DIR</code></td></tr>
+<tr><td>日志目录</td><td><code>$BILIUP_HOME/logs</code></td><td><code>BILIUP_LOG_DIR</code></td></tr>
+<tr><td>缓存目录</td><td><code>$BILIUP_HOME/cache</code></td><td><code>BILIUP_CACHE_DIR</code></td></tr>
+<tr><td>WebUI 静态文件</td><td>源码为 <code>out</code>，wheel 为内置目录</td><td><code>BILIUP_FRONTEND_DIR</code></td></tr>
+</tbody></table>
+<p>源码目录启动时，<code>BILIUP_HOME</code> 默认是仓库根目录，因此会直接使用现有的 <code>data/data.sqlite3</code>。Docker Compose 将主机的 <code>./data</code> 挂载到容器 <code>/data</code>。</p>
+<h2 id="shu-ju-ku-sheng-ji">数据库升级</h2>
+<p>服务每次启动都会执行 Alembic 迁移。已有表和数据会原地升级，不需要导出后重新导入，也不应删除数据库重新开始。</p>
+<p>升级前：</p>
+<ol>
+<li>停止服务，确保 SQLite 没有写入。</li>
+<li>备份整个 <code>BILIUP_HOME</code>，至少备份数据库和账号 JSON。</li>
+<li>更新代码或镜像。</li>
+<li>启动服务并检查健康状态、任务状态和日志。</li>
+</ol>
+<p>Docker 更新：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>docker compose down
+</span><span>docker compose build --pull
+</span><span>docker compose up -d
+</span><span>docker compose ps
+</span></code></pre>
+<p>源码更新：</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>uv sync --extra dev
+</span><span>npm ci
+</span><span>npm run build
+</span><span>uv run pytest -q
+</span><span>uv run biliup server
+</span></code></pre>
+<h2 id="pei-zhi-dao-ru-jian-rong">配置导入兼容</h2>
+<p>YAML/TOML 中的主播只在 SQLite 没有主播任务时首次导入。数据库中已有任务时，启动不会用配置文件覆盖它们。旧上传器名称 <code>biliup-rs</code> 和 <code>stream_gears</code> 会迁移为 Python <code>bili_web</code>。</p>
+<h2 id="jian-kang-jian-cha">健康检查</h2>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>curl http://127.0.0.1:19159/healthz
+</span></code></pre>
+<p>正常返回：</p>
+<pre data-lang="json" style="background-color:#2b303b;color:#c0c5ce;" class="language-json "><code class="language-json" data-lang="json"><span>{&quot;</span><span style="color:#a3be8c;">status</span><span>&quot;:&quot;</span><span style="color:#a3be8c;">ok</span><span>&quot;}
+</span></code></pre>
+<p>OpenAPI 文档位于 <code>/docs</code>。服务异常时先查看 <code>logs/biliup.log</code> 或 <code>docker compose logs biliup</code>。</p>
+
+        
+        
+<div class="docs-navigation d-flex justify-content-between">
+  
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+        
+      
+        
+        
+          
+            
+              
+              <a href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;getting-started&#x2F;quick-start&#x2F;">
+                <div class="card my-1">
+                  <div class="card-body py-2">
+                    &larr; 快速开始
+                  </div>
+                </div>
+              </a>
+            
+            
+            
+          
+        
+      
+    
+  
+
+  
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+      
+      
+        
+      
+    
+      
+      
+        
+          
+          
+          <a class="ms-auto" href="https:&#x2F;&#x2F;qaq000000.github.io&#x2F;biliuppy&#x2F;docs&#x2F;help&#x2F;faq&#x2F;">
+            <div class="card my-1">
+              <div class="card-body py-2">
+                常见问题 &rarr;
+              </div>
+            </div>
+          </a>
+          
+          
+          
+        
+      
+    
+      
+      
+        
+      
+    
+  
+</div>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+
+  
+    
+<footer class="footer text-muted">
+	<div class="container">
+		<div class="row">
+			<div class="col-lg-8 order-last order-lg-first">
+				<ul class="list-inline">
+					
+						<li class="list-inline-item">Powered by <a href="https://www.getzola.org/">Zola</a> and <a href="https://github.com/aaranxu/adidoks">AdiDoks</a></li>
+					
+				</ul>
+			</div>
+			<div class="col-lg-8 order-first order-lg-last text-lg-end">
+				<ul class="list-inline">
+					
+						
+							<li class="list-inline-item"><a href="https://qaq000000.github.io/biliuppy/docs/contributing/code-of-conduct/">行为准则</a></li>
+						
+					
+				</ul>
+			</div>
+		</div>
+	</div>
+</footer>
+
+  
+
+  
+<script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/main.js" defer></script>
+
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/plugins/elasticlunr.min.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/search_index.en.js" defer></script>
+  <script type="text/javascript" src="https://qaq000000.github.io/biliuppy/js/search.js" defer></script>
+
+  
+</body>
+</html>
